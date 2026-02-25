@@ -4,6 +4,7 @@ from enum import Enum, auto
 class ConversationState(Enum):
     """Tracks the current stage of the conversation flow."""
     GREETING = auto()
+    COLLECT_EXCHANGE = auto()   # NEW — first step; required to validate tickers
     COLLECT_BUDGET = auto()
     COLLECT_RISK = auto()
     COLLECT_HORIZON = auto()
@@ -18,6 +19,7 @@ class ConversationState(Enum):
 class Intent(Enum):
     """User intent categories detected from input."""
     GREET = auto()
+    PROVIDE_EXCHANGE = auto()   # NEW
     PROVIDE_BUDGET = auto()
     PROVIDE_RISK = auto()
     PROVIDE_HORIZON = auto()
@@ -42,3 +44,9 @@ class InvestmentHorizon(Enum):
     SHORT = "short"    # < 1 year
     MEDIUM = "medium"  # 1–5 years
     LONG = "long"      # > 5 years
+
+
+class Exchange(Enum):
+    """Stock exchange identifier."""
+    NSE = "NSE"   # National Stock Exchange of India
+    BSE = "BSE"   # Bombay Stock Exchange

@@ -1,6 +1,6 @@
 import re
 from typing import Optional, List
-from chatbot.enums import Intent, RiskProfile, InvestmentHorizon
+from chatbot.enums import Intent, RiskProfile, InvestmentHorizon, Exchange
 
 
 class IntentParser:
@@ -27,6 +27,8 @@ class IntentParser:
             return Intent.RESTART
         if normalized in self.GREET_PHRASES:
             return Intent.GREET
+        if self.extract_exchange(text) is not None:
+            return Intent.PROVIDE_EXCHANGE
         if self.extract_budget(text) is not None:
             return Intent.PROVIDE_BUDGET
         if self.extract_risk(text) is not None:
@@ -47,6 +49,22 @@ class IntentParser:
     # ------------------------------------------------------------------ #
     #  Value extractors
     # ------------------------------------------------------------------ #
+
+    def extract_exchange(self, text: str) -> Optional[Exchange]:
+        """Detect NSE or BSE from free text."""
+        upper = text.strip().upper()
+        # Exact or embedded match
+        if re.search(r'\bNSE\b', upper):
+            return Exchange.NSE
+        if re.search(r'\bBSE\b', upper):
+            return Exchange.BSE
+        # Common aliases
+        lower = text.strip().lower()
+        if any(w in lower for w in ("national stock exchange", "nifty")):
+            return Exchange.NSE
+        if any(w in lower for w in ("bombay stock exchange", "sensex")):
+            return Exchange.BSE
+        return None
 
     def extract_budget(self, text: str) -> Optional[float]:
         """Extract a numeric budget value (supports k/m suffixes)."""
@@ -89,7 +107,7 @@ class IntentParser:
     def extract_stocks(self, text: str) -> List[str]:
         """Parse a comma/space-separated list of ticker symbols."""
         tokens = re.split(r"[,\s]+", text.strip())
-        return [t.upper() for t in tokens if re.match(r"^[A-Z]{1,10}(\.NS|\.BO)?$", t.upper())]
+        return [t.upper() for t in tokens if re.match(r"^[A-Z0-9]{1,15}([-&][A-Z]{1,10})?$", t.upper()) and len(t) >= 2]
 
     # ------------------------------------------------------------------ #
     #  Helpers
@@ -104,8 +122,11 @@ class IntentParser:
         return False
 
     def _looks_like_stocks(self, text: str) -> bool:
-        """Heuristic: all words are plausible ticker symbols."""
+        """Heuristic: all words look like plausible ticker symbols (≥2 chars, all caps/digits)."""
         tokens = re.split(r"[,\s]+", text.strip())
-        if not tokens:
+        if not tokens or len(tokens) > 20:
             return False
-        return all(re.match(r"^[A-Z]{1,10}(\.NS|\.BO)?$", t.upper()) for t in tokens if t)
+        return all(
+            re.match(r"^[A-Z0-9]{2,15}([-&][A-Z]{1,10})?$", t.upper())
+            for t in tokens if t
+        )

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict
-from chatbot.enums import ConversationState, RiskProfile, InvestmentHorizon
+from chatbot.enums import ConversationState, RiskProfile, InvestmentHorizon, Exchange
 
 
 @dataclass
@@ -11,7 +11,8 @@ class SessionContext:
     """
     state: ConversationState = ConversationState.GREETING
 
-    # User profile inputs
+    # User profile inputs — collected in this order
+    exchange: Optional[Exchange] = None    # collected first (validates tickers)
     budget: Optional[float] = None
     risk_profile: Optional[RiskProfile] = None
     investment_horizon: Optional[InvestmentHorizon] = None
