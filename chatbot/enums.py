@@ -19,7 +19,7 @@ class ConversationState(Enum):
 class Intent(Enum):
     """User intent categories detected from input."""
     GREET = auto()
-    PROVIDE_EXCHANGE = auto()   # NEW
+    PROVIDE_EXCHANGE = auto()
     PROVIDE_BUDGET = auto()
     PROVIDE_RISK = auto()
     PROVIDE_HORIZON = auto()
@@ -27,6 +27,12 @@ class Intent(Enum):
     PROVIDE_STOCKS = auto()
     REQUEST_ANALYSIS = auto()
     REQUEST_EXPLANATION = auto()
+    SCREEN_TOP = auto()         # "top 10 NSE by cagr" / "lowest 5 BSE by volatility"
+    # Discoverability commands — global, work in any state
+    LIST_COMPANIES = auto()     # list / list nse / list bse [page N]
+    SEARCH_COMPANY = auto()     # search <query>
+    SHOW_KEYWORDS = auto()      # help / keywords / commands
+    SHOW_EXCHANGES = auto()     # exchanges / markets
     RESTART = auto()
     QUIT = auto()
     UNKNOWN = auto()

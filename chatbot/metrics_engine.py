@@ -135,6 +135,45 @@ class MetricsEngine:
             "latest_price": MetricsEngine.latest_price(df),
         }
 
+    @staticmethod
+    def compute_metric(df: pd.DataFrame, metric_name: str) -> float:
+        """
+        Compute only the single requested metric — avoids full compute_all()
+        overhead during screener scans where only one dimension is needed.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Filtered (horizon-sliced) price history.
+        metric_name : str
+            One of ``"cagr"``, ``"volatility"``, ``"avg_volume"``,
+            ``"latest_price"``.
+
+        Returns
+        -------
+        float
+
+        Raises
+        ------
+        ValueError
+            If *metric_name* is not recognised, or if the underlying
+            calculator raises (e.g. insufficient data).
+        """
+        dispatch: dict = {
+            "cagr":         MetricsEngine.compute_cagr,
+            "volatility":   MetricsEngine.compute_volatility,
+            "avg_volume":   MetricsEngine.compute_avg_volume,
+            "latest_price": MetricsEngine.latest_price,
+        }
+        fn = dispatch.get(metric_name)
+        if fn is None:
+            raise ValueError(
+                f"Unknown metric: '{metric_name}'. "
+                f"Valid options: {list(dispatch.keys())}"
+            )
+        return fn(df)
+
+
 
 # ===========================================================================
 # ScoringEngine — pure ranking logic, fully decoupled from data loading

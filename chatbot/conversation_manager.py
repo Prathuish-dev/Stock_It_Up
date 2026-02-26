@@ -3,6 +3,9 @@ from chatbot.enums import ConversationState, Intent, Exchange
 from chatbot.session_context import SessionContext
 from chatbot.intent_parser import IntentParser
 from chatbot.response_generator import ResponseGenerator
+from chatbot.data_loader import DataLoader
+from chatbot.screener_engine import ScreenerEngine
+from chatbot.constants import HORIZON_YEARS, DEFAULT_HORIZON_YEARS
 
 
 class ConversationManager:
@@ -26,6 +29,7 @@ class ConversationManager:
         self.context = SessionContext()
         self.parser = IntentParser()
         self.generator = ResponseGenerator()
+        self._loader = DataLoader()   # used by list/search global commands
 
     # ------------------------------------------------------------------ #
     #  Public entry point (called by main.py)
@@ -35,11 +39,12 @@ class ConversationManager:
         """Process one turn of user text and return the bot's reply."""
         text = user_input.strip()
         if not text:
-            return "Please type something — I'm listening! 👂"
+            return "Please type something — I'm listening!"
 
         intent = self.parser.parse_intent(text)
 
-        # --- global overrides (always work regardless of state) ---
+        # ---- Global overrides — work in ANY conversation state ----------
+
         if intent == Intent.QUIT:
             self.context.state = ConversationState.DONE
             return self.generator.quit_message()
@@ -49,7 +54,74 @@ class ConversationManager:
             self.context.state = ConversationState.COLLECT_EXCHANGE
             return self.generator.restart_message()
 
+        if intent == Intent.SHOW_KEYWORDS:
+            return self.generator.show_keywords()
+
+        if intent == Intent.SHOW_EXCHANGES:
+            return self.generator.show_exchanges()
+
+        if intent == Intent.LIST_COMPANIES:
+            params   = self.parser.extract_list_params(text)
+            exchange = params["exchange"] or self.context.exchange
+            page     = params["page"]
+            if exchange is None:
+                return (
+                    "Which exchange? Type 'list NSE' or 'list BSE'.\n"
+                    "Or select an exchange first by typing NSE or BSE."
+                )
+            companies = self._loader.list_available(exchange.value)
+            return self.generator.list_companies(
+                companies, exchange=exchange.value, page=page
+            )
+
+        if intent == Intent.SEARCH_COMPANY:
+            query    = self.parser.extract_search_query(text)
+            exchange = self.context.exchange
+            if not query:
+                return "What ticker would you like to search? E.g. 'search TCS'"
+            if exchange is None:
+                return (
+                    "Please select an exchange first (NSE or BSE) "
+                    "so I know where to search."
+                )
+            matches = self._loader.search_tickers(exchange.value, query)
+            return self.generator.search_results(
+                query, matches, exchange=exchange.value
+            )
+
+        if intent == Intent.SCREEN_TOP:
+            params   = self.parser.extract_screener_params(text)
+            exchange = params["exchange"] or self.context.exchange
+            if exchange is None:
+                return (
+                    "Which exchange? E.g. 'top 10 NSE by cagr' or 'top 5 BSE by score'.\n"
+                    "Or select an exchange first by typing NSE or BSE."
+                )
+            horizon_years = HORIZON_YEARS.get(
+                self.context.investment_horizon, DEFAULT_HORIZON_YEARS
+            )
+            print("\n⏳ Scanning market… (this may take a few seconds)\n")
+            results = ScreenerEngine.run(
+                exchange=exchange.value,
+                metric=params["metric"],
+                limit=params["limit"],
+                horizon_years=horizon_years,
+                direction=params["direction"],
+                data_loader=self._loader,
+                risk_profile=self.context.risk_profile,
+                weights=self.context.weights if self.context.weights else None,
+            )
+            return self.generator.format_screener_results(
+                results,
+                metric=params["metric"],
+                exchange=exchange.value,
+                limit=params["limit"],
+                horizon_years=horizon_years,
+                direction=params["direction"],
+            )
+
         return self._dispatch(text, intent)
+
 
     def start(self) -> str:
         """Return the opening greeting without requiring user input."""

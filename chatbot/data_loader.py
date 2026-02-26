@@ -84,6 +84,30 @@ class DataLoader:
         )
         return bool(list(folder.glob(f"{ticker}_*.csv"))) if folder.exists() else False
 
+    def search_tickers(self, exchange: str, query: str) -> list[str]:
+        """
+        Return tickers whose names contain *query* (case-insensitive).
+
+        Prefix matches are listed first, then other substrings, both groups
+        sorted alphabetically.  No CSV files are read.
+
+        Parameters
+        ----------
+        exchange : str
+            ``"NSE"`` or ``"BSE"``
+        query : str
+            Search string, e.g. ``"TCS"``, ``"BAJ"``, ``"BANK"``
+        """
+        query = query.upper().strip()
+        if not query:
+            return []
+
+        all_tickers = self.list_available(exchange)
+        prefix  = [t for t in all_tickers if t.startswith(query)]
+        others  = [t for t in all_tickers if query in t and not t.startswith(query)]
+        return prefix + others
+
+
 
 # ------------------------------------------------------------------
 # Module-level cached loader (instance-agnostic — only base+exchange+ticker
