@@ -69,6 +69,24 @@ METRIC_REGISTRY: dict[str, dict] = {
         "higher_is_better": True,
         "scale":           1.0,
     },
+    "sharpe": {
+        "display":         "Sharpe",
+        "unit":            "",
+        "higher_is_better": True,
+        "scale":           1.0,
+    },
+    "max_drawdown": {
+        "display":         "Max Drawdown",
+        "unit":            "%",
+        "higher_is_better": False,
+        "scale":           100.0,   # show as percentage
+    },
+    "sortino": {
+        "display":         "Sortino",
+        "unit":            "",
+        "higher_is_better": True,
+        "scale":           1.0,
+    },
 }
 
 

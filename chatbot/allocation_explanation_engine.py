@@ -14,6 +14,8 @@ Design contract:
 
 from typing import List, Dict, Optional
 
+from chatbot.portfolio_engine import PortfolioEngine
+
 
 class AllocationExplanationEngine:
     """
@@ -78,6 +80,7 @@ class AllocationExplanationEngine:
                                     ),
             "risk_decomposition":   AllocationExplanationEngine._risk_decomposition(allocations),
             "capital_distribution": AllocationExplanationEngine._capital_distribution(allocations),
+            "portfolio_risk":       AllocationExplanationEngine._portfolio_risk_section(allocations),
             "final_statement":      AllocationExplanationEngine._final_statement(
                                         allocations, risk_profile
                                     ),
@@ -196,12 +199,92 @@ class AllocationExplanationEngine:
         if "capital_amount" not in allocations[0]:
             return "Capital distribution not available."
 
-        lines = ["Ticker     Capital Allocation (₹)"]
+        lines = ["Ticker     Capital Allocation (\u20b9)"]
         for a in allocations:
             lines.append(
                 f"{a['ticker']:<10} "
                 f"{a['capital_amount']:>12,.2f}"
             )
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _portfolio_risk_section(allocations: List[Dict]) -> str:
+        """
+        Portfolio-level risk metrics using the independent-stock assumption.
+
+        Requires each allocation dict to have ``"cagr"`` and ``"volatility"``
+        keys (present when allocations are produced via the full pipeline).
+        Returns a brief notice when those keys are unavailable.
+        """
+        if not allocations or "cagr" not in allocations[0]:
+            return "Portfolio risk metrics not available (cagr/volatility not in allocation)."
+
+        summary = PortfolioEngine.portfolio_summary(allocations)
+        ret  = summary["portfolio_return"]     * 100
+        vol  = summary["portfolio_volatility"] * 100
+        sharpe = summary["portfolio_sharpe"]
+
+        if sharpe >= 1.0:
+            interpretation = (
+                f"  The portfolio delivers {sharpe:.2f} units of excess return per unit "
+                "of risk \u2014 strong risk-adjusted construction."
+            )
+        elif sharpe >= 0.5:
+            interpretation = (
+                f"  Balanced risk-return profile (Sharpe {sharpe:.2f}). "
+                "Reasonable compensation for the volatility incurred."
+            )
+        elif sharpe >= 0.0:
+            interpretation = (
+                f"  Weak risk-return compensation (Sharpe {sharpe:.2f}). "
+                "Returns are not fully justifying the portfolio volatility."
+            )
+        else:
+            interpretation = (
+                f"  Portfolio underperforms the risk-free rate on a risk-adjusted basis "
+                f"(Sharpe {sharpe:.2f}). Consider rebalancing toward higher-Sharpe stocks."
+            )
+
+        sep = "-" * 46
+        lines = [
+            sep,
+            "  Portfolio Risk-Adjusted Performance",
+            sep,
+            f"  Expected Return      : {ret:>7.2f}%",
+            f"  Portfolio Volatility : {vol:>5.2f}%   (independent-stock assumption)",
+            f"  Portfolio Sharpe     : {sharpe:>7.2f}",
+        ]
+
+        # Max Drawdown row — only when mdd is available in summary
+        mdd = summary.get("portfolio_mdd")
+        if mdd is not None and mdd > 0.0:
+            lines.append(f"  Max Drawdown         : {mdd * 100:>5.2f}%")
+
+        # Sortino row — only when available
+        sortino = summary.get("portfolio_sortino")
+        if sortino is not None:
+            lines.append(f"  Portfolio Sortino    : {sortino:>7.2f}")
+
+        lines += [sep, interpretation]
+
+        # MDD interpretation
+        if mdd is not None and mdd > 0.0:
+            if mdd < 0.10:
+                lines.append(
+                    f"  Capital Stability    : Excellent (MDD {mdd*100:.2f}%). "
+                    "Portfolio has minimal peak-to-trough decline history."
+                )
+            elif mdd < 0.25:
+                lines.append(
+                    f"  Capital Stability    : Moderate (MDD {mdd*100:.2f}%). "
+                    "Expect meaningful but recoverable drawdowns."
+                )
+            else:
+                lines.append(
+                    f"  Capital Stability    : Significant (MDD {mdd*100:.2f}%). "
+                    "High capital-pain risk; ensure position sizing reflects this."
+                )
 
         return "\n".join(lines)
 
@@ -242,8 +325,60 @@ class AllocationExplanationEngine:
             "risk_distribution":    "",
             "risk_decomposition":   "",
             "capital_distribution": "",
+            "portfolio_risk":       "",
+            "monte_carlo":          "",
             "final_statement":      "",
         }
+
+    @staticmethod
+    def _monte_carlo_section(mc: dict) -> str:
+        """
+        Render a Monte Carlo simulation result block.
+
+        Parameters
+        ----------
+        mc : dict
+            Output from ``PortfolioEngine.simulate_portfolio_monte_carlo()``.
+            Keys: mean_return, std_dev, var_95, cvar_95, probability_of_loss,
+                  simulated_returns.
+
+        Returns
+        -------
+        str
+            Formatted multi-line string, or empty string when mc is empty.
+        """
+        if not mc:
+            return ""
+
+        n_sims   = len(mc.get("simulated_returns", []))
+        mean_r   = mc["mean_return"]         * 100
+        std_d    = mc["std_dev"]             * 100
+        var_95   = mc["var_95"]              * 100
+        cvar_95  = mc["cvar_95"]             * 100
+        p_loss   = mc["probability_of_loss"] * 100
+
+        if p_loss < 20:
+            interpretation = "Low tail risk. Unlikely to produce negative annual returns under simulated conditions."
+        elif p_loss < 40:
+            interpretation = "Moderate downside tail risk observed. Diversification or hedging may reduce exposure."
+        else:
+            interpretation = "High tail risk. A significant proportion of simulated outcomes are negative."
+
+        sep = "-" * 46
+        lines = [
+            sep,
+            f"  Monte Carlo Stress Simulation ({n_sims:,} runs)",
+            sep,
+            f"  Mean Return        : {mean_r:>+7.2f}%",
+            f"  Volatility (sim)   : {std_d:>7.2f}%",
+            f"  95% VaR            : {var_95:>+7.2f}%",
+            f"  95% CVaR           : {cvar_95:>+7.2f}%",
+            f"  Probability of Loss: {p_loss:>6.1f}%",
+            sep,
+            f"  {interpretation}",
+        ]
+        return "\n".join(lines)
+
 
     # ------------------------------------------------------------------ #
     #  CLI formatter
@@ -273,6 +408,10 @@ class AllocationExplanationEngine:
             "",
             "--- Capital Distribution ---",
             explanation["capital_distribution"],
+            "",
+            explanation["portfolio_risk"],
+            "",
+            explanation.get("monte_carlo", ""),
             "",
             explanation["final_statement"],
         ]

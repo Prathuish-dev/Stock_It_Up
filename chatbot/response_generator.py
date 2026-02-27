@@ -220,6 +220,7 @@ class ResponseGenerator:
             "\nScreener (works any time):\n"
             "  top 10 NSE by cagr         Best CAGR on NSE\n"
             "  top 5 BSE by score         Weighted score ranking (BSE)\n"
+            "  top 10 NSE by sharpe       Best risk-adjusted return (Sharpe Ratio)\n"
             "  lowest 10 NSE by volatility Safest stocks (lowest volatility)\n"
             "  top 20 BSE by volume       Most liquid BSE stocks\n"
             "  Note: 'top N by volatility' = most volatile; use 'lowest' for safest\n"

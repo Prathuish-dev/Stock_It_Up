@@ -4,6 +4,7 @@ from chatbot.session_context import SessionContext
 from chatbot.intent_parser import IntentParser
 from chatbot.response_generator import ResponseGenerator
 from chatbot.data_loader import DataLoader
+from chatbot.metric_cache import MetricCache
 from chatbot.screener_engine import ScreenerEngine
 from chatbot.constants import HORIZON_YEARS, DEFAULT_HORIZON_YEARS
 
@@ -30,6 +31,7 @@ class ConversationManager:
         self.parser = IntentParser()
         self.generator = ResponseGenerator()
         self._loader = DataLoader()   # used by list/search global commands
+        self._cache  = MetricCache(self._loader)  # persistent metric cache
 
     # ------------------------------------------------------------------ #
     #  Public entry point (called by main.py)
@@ -89,6 +91,23 @@ class ConversationManager:
                 query, matches, exchange=exchange.value
             )
 
+        if intent == Intent.REBUILD_CACHE:
+            rebuild_exchange = self.parser.extract_exchange(text) or self.context.exchange
+            if rebuild_exchange is None:
+                return (
+                    "Which exchange cache should I rebuild?\n"
+                    "Example: 'rebuild cache NSE' or 'refresh cache BSE'"
+                )
+            horizon_years = HORIZON_YEARS.get(
+                self.context.investment_horizon, DEFAULT_HORIZON_YEARS
+            )
+            self._cache.invalidate(rebuild_exchange.value, horizon_years)
+            self._cache.build(rebuild_exchange.value, horizon_years)
+            return (
+                f"✅ Cache rebuilt for {rebuild_exchange.value} ({horizon_years}y horizon).\n"
+                f"Screener queries will now be instant."
+            )
+
         if intent == Intent.SCREEN_TOP:
             params   = self.parser.extract_screener_params(text)
             exchange = params["exchange"] or self.context.exchange
@@ -100,7 +119,20 @@ class ConversationManager:
             horizon_years = HORIZON_YEARS.get(
                 self.context.investment_horizon, DEFAULT_HORIZON_YEARS
             )
-            print("\n⏳ Scanning market… (this may take a few seconds)\n")
+            n_tickers = len(self._loader.list_available(exchange.value))
+            if self._cache.is_valid(exchange.value, horizon_years):
+                print(
+                    f"\n⚡ Cache hit — scanning {n_tickers:,} {exchange.value} stocks "
+                    f"by {params['metric'].upper()} instantly…\n",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"\n📦 No cache found. Building metric cache for {n_tickers:,} "
+                    f"{exchange.value} stocks (one-time, ~4 min — dots show progress)\n"
+                    f"   Tip: type 'rebuild cache {exchange.value}' any time to refresh.\n",
+                    flush=True,
+                )
             results = ScreenerEngine.run(
                 exchange=exchange.value,
                 metric=params["metric"],
@@ -110,6 +142,7 @@ class ConversationManager:
                 data_loader=self._loader,
                 risk_profile=self.context.risk_profile,
                 weights=self.context.weights if self.context.weights else None,
+                cache=self._cache,
             )
             return self.generator.format_screener_results(
                 results,

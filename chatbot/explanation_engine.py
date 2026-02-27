@@ -161,12 +161,20 @@ class ExplanationEngine:
         ]
 
         fmt = {
-            "return": lambda v: f"{v * 100:+.2f}% CAGR",
-            "risk":   lambda v: f"{v * 100:.2f}% vol",
-            "volume": lambda v: f"{v:,.0f} shrs",
+            "return":       lambda v: f"{v * 100:+.2f}% CAGR",
+            "risk":         lambda v: f"{v * 100:.2f}% vol",
+            "volume":       lambda v: f"{v:,.0f} shrs",
+            "sharpe":       lambda v: f"{v:.4f} ratio",
+            "max_drawdown": lambda v: f"{v * 100:.2f}% MDD",
+            "sortino":      lambda v: f"{v:.4f} ratio",
         }
 
-        for label in ["return", "risk", "volume"]:
+        criteria_order = ["return", "risk", "volume"]
+        for optional in ("sharpe", "max_drawdown", "sortino"):
+            if optional in nrm:
+                criteria_order.append(optional)
+
+        for label in criteria_order:
             raw_str = fmt[label](raw.get(label, 0.0))
             lines.append(
                 f"{label:<12} {raw_str:>14} "
@@ -293,8 +301,80 @@ class ExplanationEngine:
             lines.append(
                 f"  Horizon      : {investment_horizon.value.capitalize()}-term "
                 f"({years}-year window). "
-                "CAGR and volatility are computed over this period only."
+                "CAGR, volatility and Sharpe are all computed over this period only."
             )
+
+        # -- Sharpe Ratio (present only when sharpe criterion was used) --
+        raw_sharpe = raw.get("sharpe")
+        if raw_sharpe is not None:
+            lines.append("")
+            if raw_sharpe >= 1.0:
+                lines.append(
+                    f"  Sharpe Ratio : {raw_sharpe:.4f} — Excellent risk-adjusted return. "
+                    "Earns more than 1 unit of excess return for each unit of risk taken."
+                )
+            elif raw_sharpe >= 0.3:
+                lines.append(
+                    f"  Sharpe Ratio : {raw_sharpe:.4f} — Moderate risk-adjusted return. "
+                    "Returns are reasonable relative to the volatility endured."
+                )
+            elif raw_sharpe >= 0.0:
+                lines.append(
+                    f"  Sharpe Ratio : {raw_sharpe:.4f} — Weak risk-adjusted return. "
+                    "Returns are barely proportionate to the risk taken."
+                )
+            else:
+                lines.append(
+                    f"  Sharpe Ratio : {raw_sharpe:.4f} — Stock underperformed the "
+                    "risk-free rate relative to its volatility. "
+                    "Consider whether the risk is justified."
+                )
+
+        # -- Maximum Drawdown (present only when mdd criterion was used) --
+        raw_mdd = raw.get("max_drawdown")
+        if raw_mdd is not None:
+            lines.append("")
+            mdd_pct = raw_mdd * 100
+            if raw_mdd < 0.10:
+                lines.append(
+                    f"  Max Drawdown : {mdd_pct:.2f}% — Excellent capital stability. "
+                    "Historical peak-to-trough decline is minimal."
+                )
+            elif raw_mdd < 0.25:
+                lines.append(
+                    f"  Max Drawdown : {mdd_pct:.2f}% — Moderate downside risk. "
+                    "Stock has experienced meaningful but recoverable declines."
+                )
+            else:
+                lines.append(
+                    f"  Max Drawdown : {mdd_pct:.2f}% — Significant historical decline. "
+                    "High capital pain risk; consider position sizing carefully."
+                )
+
+        # -- Sortino Ratio (present only when sortino criterion was used) --
+        raw_sortino = raw.get("sortino")
+        if raw_sortino is not None:
+            lines.append("")
+            if raw_sortino >= 1.5:
+                lines.append(
+                    f"  Sortino Ratio: {raw_sortino:.4f} — Strong downside protection. "
+                    "Earns significantly more than the risk-free rate relative to downside deviation."
+                )
+            elif raw_sortino >= 0.5:
+                lines.append(
+                    f"  Sortino Ratio: {raw_sortino:.4f} — Balanced downside-adjusted return. "
+                    "Upside is not penalised; only adverse days drag the ratio."
+                )
+            elif raw_sortino >= 0.0:
+                lines.append(
+                    f"  Sortino Ratio: {raw_sortino:.4f} — Weak downside compensation. "
+                    "Returns are barely covering the risk of negative days."
+                )
+            else:
+                lines.append(
+                    f"  Sortino Ratio: {raw_sortino:.4f} — Underperforms risk-free on downside-adjusted basis. "
+                    "The frequency or magnitude of negative days is high."
+                )
 
         return "\n".join(lines)
 
@@ -400,6 +480,7 @@ class ExplanationEngine:
         ticker   = result["ticker"]
         cagr     = result.get("raw", {}).get("return", 0.0) * 100
         vol      = result.get("raw", {}).get("risk",   0.0) * 100
+        sharpe   = result.get("raw", {}).get("sharpe")
 
         if rank == 1:
             verdict = "Top-ranked pick"
@@ -408,10 +489,11 @@ class ExplanationEngine:
         else:
             verdict = "Lower-ranked option"
 
+        sharpe_str = f"  |  Sharpe {sharpe:.2f}" if sharpe is not None else ""
         return (
             f"{ticker} — {verdict}  "
             f"[Rank #{rank}/{total}  |  Score {score:.4f}  |  "
-            f"CAGR {cagr:+.1f}%  |  Volatility {vol:.1f}%]"
+            f"CAGR {cagr:+.1f}%  |  Volatility {vol:.1f}%{sharpe_str}]"
         )
 
     @staticmethod

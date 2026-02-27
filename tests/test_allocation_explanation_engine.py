@@ -51,7 +51,7 @@ class TestEmptyInput(unittest.TestCase):
         expected_keys = {
             "summary", "allocation_table", "strategy_rationale",
             "risk_distribution", "risk_decomposition", "capital_distribution",
-            "final_statement",
+            "portfolio_risk", "monte_carlo", "final_statement",
         }
         self.assertEqual(set(result.keys()), expected_keys)
 
@@ -252,7 +252,7 @@ class TestExplain(unittest.TestCase):
             set(r.keys()),
             {"summary", "allocation_table", "strategy_rationale",
              "risk_distribution", "risk_decomposition",
-             "capital_distribution", "final_statement"},
+             "capital_distribution", "portfolio_risk", "final_statement"},
         )
 
     def test_all_sections_are_strings(self):

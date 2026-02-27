@@ -12,6 +12,8 @@ COMMAND_MAP: dict[Intent, list[str]] = {
     Intent.RESTART:        ["restart", "reset", "start over", "again", "new session"],
     Intent.SHOW_KEYWORDS:  ["help", "keywords", "commands", "what can you do", "supported"],
     Intent.SHOW_EXCHANGES: ["exchanges", "markets", "which exchange", "what exchanges"],
+    Intent.REBUILD_CACHE:  ["rebuild cache", "refresh cache", "update cache",
+                            "clear cache", "recalculate", "rebuild index"],
     Intent.LIST_COMPANIES: ["list companies", "show companies", "available stocks",
                             "list stocks", "show stocks", "list nse", "list bse",
                             "display companies", "list all", "companies", "list"],
@@ -105,16 +107,36 @@ class IntentParser:
 
         # --- metric: keyword matching with aliases ---
         _METRIC_ALIASES: dict[str, str] = {
-            "growth":   "cagr",
-            "return":   "cagr",
-            "cagr":     "cagr",
-            "safe":     "volatility",
-            "safest":   "volatility",
-            "volatile": "volatility",
-            "volatility": "volatility",
-            "score":    "score",
-            "rating":   "score",
-            "ranked":   "score",
+            # Longer / multi-word aliases checked first to prevent substring clashes
+            "risk-adjusted": "sharpe",
+            "risk adjusted": "sharpe",
+            "risk return":   "sharpe",
+            "max drawdown":  "max_drawdown",
+            "max_drawdown":  "max_drawdown",
+            "drawdown":      "max_drawdown",
+            "mdd":           "max_drawdown",
+            "downside risk": "max_drawdown",
+            "avg volume":    "avg_volume",
+            "avg_volume":    "avg_volume",
+            "latest price":  "latest_price",
+            # Single-word aliases
+            "sharpe":        "sharpe",
+            "sortino":       "sortino",
+            "downside":      "sortino",
+            "volume":        "avg_volume",       # "top 10 NSE by volume"
+            "risk":          "volatility",       # "top 10 NSE by risk"
+            "risky":         "volatility",
+            "growth":        "cagr",
+            "return":        "cagr",
+            "cagr":          "cagr",
+            "safe":          "volatility",
+            "safest":        "volatility",
+            "volatile":      "volatility",
+            "volatility":    "volatility",
+            "price":         "latest_price",
+            "score":         "score",
+            "rating":        "score",
+            "ranked":        "score",
         }
         metric = "cagr"  # default
         for keyword, mapped in _METRIC_ALIASES.items():

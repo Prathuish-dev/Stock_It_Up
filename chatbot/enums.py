@@ -33,6 +33,7 @@ class Intent(Enum):
     SEARCH_COMPANY = auto()     # search <query>
     SHOW_KEYWORDS = auto()      # help / keywords / commands
     SHOW_EXCHANGES = auto()     # exchanges / markets
+    REBUILD_CACHE = auto()      # rebuild cache / refresh cache / update cache
     RESTART = auto()
     QUIT = auto()
     UNKNOWN = auto()

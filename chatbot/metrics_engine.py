@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 
+from chatbot.config import RISK_FREE_RATE, SHARPE_CLIP_MIN, SHARPE_CLIP_MAX
+
 
 class MetricsEngine:
     """
@@ -121,49 +123,36 @@ class MetricsEngine:
         Returns
         -------
         dict with keys:
-            ``cagr``, ``volatility``, ``avg_volume``, ``latest_price``
-
-        Raises
-        ------
-        ValueError
-            Propagated from individual calculators on insufficient data.
+            ``cagr``, ``volatility``, ``avg_volume``, ``latest_price``,
+            ``sharpe``, ``max_drawdown``, ``sortino``
         """
         return {
-            "cagr": MetricsEngine.compute_cagr(df),
-            "volatility": MetricsEngine.compute_volatility(df),
-            "avg_volume": MetricsEngine.compute_avg_volume(df),
+            "cagr":         MetricsEngine.compute_cagr(df),
+            "volatility":   MetricsEngine.compute_volatility(df),
+            "avg_volume":   MetricsEngine.compute_avg_volume(df),
             "latest_price": MetricsEngine.latest_price(df),
+            "sharpe":       MetricsEngine.compute_sharpe(df),
+            "max_drawdown": MetricsEngine.compute_max_drawdown(df),
+            "sortino":      MetricsEngine.compute_sortino(df),
         }
 
     @staticmethod
     def compute_metric(df: pd.DataFrame, metric_name: str) -> float:
         """
         Compute only the single requested metric — avoids full compute_all()
-        overhead during screener scans where only one dimension is needed.
+        overhead during screener scans.
 
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Filtered (horizon-sliced) price history.
-        metric_name : str
-            One of ``"cagr"``, ``"volatility"``, ``"avg_volume"``,
-            ``"latest_price"``.
-
-        Returns
-        -------
-        float
-
-        Raises
-        ------
-        ValueError
-            If *metric_name* is not recognised, or if the underlying
-            calculator raises (e.g. insufficient data).
+        Valid metric names: ``cagr``, ``volatility``, ``avg_volume``,
+        ``latest_price``, ``sharpe``, ``max_drawdown``, ``sortino``.
         """
         dispatch: dict = {
             "cagr":         MetricsEngine.compute_cagr,
             "volatility":   MetricsEngine.compute_volatility,
             "avg_volume":   MetricsEngine.compute_avg_volume,
             "latest_price": MetricsEngine.latest_price,
+            "sharpe":       MetricsEngine.compute_sharpe,
+            "max_drawdown": MetricsEngine.compute_max_drawdown,   # NEW
+            "sortino":      MetricsEngine.compute_sortino,         # NEW
         }
         fn = dispatch.get(metric_name)
         if fn is None:
@@ -172,6 +161,117 @@ class MetricsEngine:
                 f"Valid options: {list(dispatch.keys())}"
             )
         return fn(df)
+
+    @staticmethod
+    def compute_max_drawdown(df: pd.DataFrame) -> float:
+        """
+        Compute the maximum peak-to-trough drawdown over the horizon window.
+
+        Formula::
+
+            MDD = max_t( (peak_t - trough_t) / peak_t )
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Pre-filtered horizon DataFrame (``Adj Close`` column required).
+
+        Returns
+        -------
+        float
+            Positive decimal in [0, 1].  E.g. ``0.25`` means a 25%
+            peak-to-trough decline.  **Lower is better.**
+            Returns ``0.0`` on empty input.
+        """
+        if df.empty or len(df) < 2:
+            return 0.0
+
+        prices       = df["Adj Close"]
+        running_peak = prices.cummax()
+        drawdowns    = (running_peak - prices) / running_peak
+        return float(drawdowns.max())
+
+    @staticmethod
+    def compute_sortino(df: pd.DataFrame) -> float:
+        """
+        Compute the annualised Sortino Ratio.
+
+        Unlike Sharpe, Sortino penalises **only downside** deviations below
+        the daily risk-free hurdle, leaving upside volatility unpunished.
+
+        Formula::
+
+            daily_rf    = RISK_FREE_RATE / 252
+            downside    = returns[returns < daily_rf]
+            sigma_down  = sqrt( mean(downside**2) ) * sqrt(252)
+            Sortino     = (CAGR - RISK_FREE_RATE) / sigma_down
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            **Must** be pre-filtered to the desired horizon before calling.
+
+        Returns
+        -------
+        float
+            Clipped to ``[SHARPE_CLIP_MIN, SHARPE_CLIP_MAX]`` (``[-1, 3]``)
+            for consistency with Sharpe normalisation.
+            Returns ``0.0`` when there are no below-threshold days or when
+            downside deviation is zero.
+        """
+        if df.empty or len(df) < MetricsEngine._MIN_ROWS:
+            return 0.0
+
+        daily_rf = RISK_FREE_RATE / 252
+        returns  = df["Adj Close"].pct_change().dropna()
+
+        # Only returns that fall below the daily risk-free hurdle contribute
+        downside = returns[returns < daily_rf]
+        if len(downside) == 0:
+            return 0.0
+
+        # Annualise downside deviation (same unit as CAGR)
+        downside_std = float(np.sqrt((downside ** 2).mean()) * np.sqrt(252))
+        if downside_std == 0.0:
+            return 0.0
+
+        cagr        = MetricsEngine.compute_cagr(df)
+        raw_sortino = (cagr - RISK_FREE_RATE) / downside_std
+
+        return float(max(SHARPE_CLIP_MIN, min(SHARPE_CLIP_MAX, raw_sortino)))
+
+    @staticmethod
+    def compute_sharpe(df: pd.DataFrame) -> float:
+        """
+        Compute the annualised Sharpe Ratio for the given (pre-filtered) DataFrame.
+
+        Formula::
+
+            Sharpe = (CAGR - RISK_FREE_RATE) / annualised_volatility
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            **Must** be pre-filtered to the desired horizon via
+            ``MetricsEngine.filter_by_horizon()`` before calling this method.
+
+        Returns
+        -------
+        float
+            Sharpe Ratio clipped to [SHARPE_CLIP_MIN, SHARPE_CLIP_MAX]
+            (default [-1.0, 3.0]).  Returns ``0.0`` when volatility is zero.
+        """
+        cagr = MetricsEngine.compute_cagr(df)
+        vol  = MetricsEngine.compute_volatility(df)
+
+        if vol == 0.0:
+            return 0.0
+
+        raw_sharpe = (cagr - RISK_FREE_RATE) / vol
+
+        # Clip to prevent outlier domination in min-max normalisation
+        return float(max(SHARPE_CLIP_MIN, min(SHARPE_CLIP_MAX, raw_sharpe)))
+
 
 
 
@@ -208,9 +308,12 @@ class ScoringEngine:
 
     # Criteria definition: label → (metrics_key, higher_is_better)
     CRITERIA: dict = {
-        "return":  ("cagr",       True),
-        "risk":    ("volatility", False),   # lower volatility = better score
-        "volume":  ("avg_volume", True),
+        "return":       ("cagr",         True),
+        "risk":         ("volatility",   False),   # lower vol = better
+        "volume":       ("avg_volume",   True),
+        "sharpe":       ("sharpe",       True),
+        "max_drawdown": ("max_drawdown", False),   # lower MDD = better
+        "sortino":      ("sortino",      True),
     }
 
     # ------------------------------------------------------------------ #

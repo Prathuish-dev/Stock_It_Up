@@ -139,6 +139,41 @@ class TestScreenerIntent(unittest.TestCase):
         params = self.parser.extract_screener_params("top 10 by cagr")
         self.assertIsNone(params["exchange"])
 
+    def test_screener_sharpe_alias_in_parser(self):
+        """'top 10 NSE by sharpe' must extract metric='sharpe'."""
+        params = self.parser.extract_screener_params("top 10 NSE by sharpe")
+        self.assertEqual(params["metric"], "sharpe")
+
+    def test_screener_risk_adjusted_alias_in_parser(self):
+        """'top 10 NSE by risk-adjusted' must also map to metric='sharpe'."""
+        params = self.parser.extract_screener_params("top 10 NSE by risk-adjusted return")
+        self.assertEqual(params["metric"], "sharpe")
+
+    def test_screener_risk_alias_maps_to_volatility(self):
+        """'top 10 NSE by risk' must map to metric='volatility'."""
+        params = self.parser.extract_screener_params("top 10 NSE by risk")
+        self.assertEqual(params["metric"], "volatility")
+
+    def test_screener_risky_alias_maps_to_volatility(self):
+        """'top 10 BSE by risky' must map to metric='volatility'."""
+        params = self.parser.extract_screener_params("top 10 BSE by risky")
+        self.assertEqual(params["metric"], "volatility")
+
+    def test_screener_volume_alias_maps_to_avg_volume(self):
+        """'top 10 NSE by volume' must map to metric='avg_volume'."""
+        params = self.parser.extract_screener_params("top 10 NSE by volume")
+        self.assertEqual(params["metric"], "avg_volume")
+
+    def test_screener_price_alias_maps_to_latest_price(self):
+        """'top 10 NSE by price' must map to metric='latest_price'."""
+        params = self.parser.extract_screener_params("top 10 NSE by price")
+        self.assertEqual(params["metric"], "latest_price")
+
+    def test_screener_drawdown_alias_maps_to_max_drawdown(self):
+        """'top 10 NSE by drawdown' must map to metric='max_drawdown'."""
+        params = self.parser.extract_screener_params("top 10 NSE by drawdown")
+        self.assertEqual(params["metric"], "max_drawdown")
+
 
 # ===========================================================================
 # 2. MetricsEngine.compute_metric()
@@ -262,6 +297,47 @@ class TestScreenerEngine(unittest.TestCase):
         )
         self.assertEqual(results, [])
 
+    def test_screener_large_limit(self):
+        """
+        200-ticker universe, limit=150: must return ≤150 results,
+        no crash, and heap-based trimming must work correctly.
+        """
+        # Build 200 tickers each backed by a valid DataFrame
+        tickers = [f"T{i:03d}" for i in range(200)]
+        loader = MagicMock()
+        loader.list_available.return_value = tickers
+        # All tickers share the same DataFrame — fast to create
+        loader.load_stock.side_effect = lambda ex, t: _DF_A
+
+        results = ScreenerEngine.run(
+            exchange="NSE", metric="cagr", limit=150,
+            horizon_years=3, direction="desc", data_loader=loader,
+        )
+
+        # Core invariants
+        self.assertLessEqual(len(results), 150)
+        self.assertGreater(len(results), 0)
+        # Result must contain the required fields
+        self.assertIn("ticker", results[0])
+        self.assertIn("display_value", results[0])
+
+    def test_screener_sharpe_metric_sorted_desc(self):
+        """
+        Phase 2 / Sharpe — screener with metric='sharpe' must:
+        - Not crash
+        - Return results sorted descending (highest Sharpe first)
+        - Include 'display_value' in each result
+        """
+        loader = self._mock_loader(["A", "B", "C"], [_DF_A, _DF_B, _DF_C])
+        results = ScreenerEngine.run(
+            exchange="NSE", metric="sharpe", limit=3,
+            horizon_years=3, direction="desc", data_loader=loader,
+        )
+        self.assertEqual(len(results), 3)
+        values = [r["value"] for r in results]
+        self.assertEqual(values, sorted(values, reverse=True))
+        self.assertIn("display_value", results[0])
+
     def test_result_has_display_value(self):
         loader = self._mock_loader(["A"], [_DF_A])
         results = ScreenerEngine.run(
@@ -277,10 +353,29 @@ class TestScreenerEngine(unittest.TestCase):
 # ===========================================================================
 
 @patch("chatbot.response_generator.DataLoader.load_stock")
+@patch("chatbot.conversation_manager.MetricCache")
 class TestConversationManagerScreener(unittest.TestCase):
+    """
+    Integration tests for screener commands through ConversationManager.
 
-    def test_screen_top_no_exchange_prompts_user(self, mock_load):
+    MetricCache is stubbed at class level so no test ever touches the real
+    comp_stock_data/.cache directory.  The mock cache always reports a miss
+    (is_valid → False) and get_or_build returns {} so ScreenerEngine.run()
+    falls through to the per-test _loader patches.
+    """
+
+    def _setup_cache_mock(self, mock_cache_cls):
+        """Configure the MetricCache mock instance for all tests."""
+        mc = mock_cache_cls.return_value
+        mc.is_valid.return_value      = False  # always a miss → no stale output
+        mc.get_or_build.return_value  = {}     # triggers live scan path in run()
+        mc.invalidate.return_value    = None
+        mc.build.return_value         = {}
+        return mc
+
+    def test_screen_top_no_exchange_prompts_user(self, mock_cache_cls, mock_load):
         """Without an exchange in session or command, prompt the user."""
+        self._setup_cache_mock(mock_cache_cls)
         m = ConversationManager()
         m.start()
         # Don't select exchange — state is COLLECT_EXCHANGE but no exchange set
@@ -288,8 +383,9 @@ class TestConversationManagerScreener(unittest.TestCase):
             resp = m.handle_message("top 10 by cagr")
         self.assertIn("exchange", resp.lower())
 
-    def test_screen_top_with_inline_exchange(self, mock_load):
+    def test_screen_top_with_inline_exchange(self, mock_cache_cls, mock_load):
         """Exchange embedded in command ('top 10 NSE by cagr') works without prior session."""
+        self._setup_cache_mock(mock_cache_cls)
         m = ConversationManager()
         m.start()
         with patch.object(m._loader, "list_available", return_value=["A", "B", "C"]):
@@ -298,8 +394,9 @@ class TestConversationManagerScreener(unittest.TestCase):
         # Should include the table header
         self.assertIn("CAGR", resp)
 
-    def test_screen_top_session_exchange_fallback(self, mock_load):
+    def test_screen_top_session_exchange_fallback(self, mock_cache_cls, mock_load):
         """When session exchange is set, screener uses it even without inline exchange."""
+        self._setup_cache_mock(mock_cache_cls)
         m = ConversationManager()
         m.start()
         m.handle_message("NSE")      # sets session exchange
@@ -307,6 +404,19 @@ class TestConversationManagerScreener(unittest.TestCase):
             with patch.object(m._loader, "load_stock", return_value=_DF_A):
                 resp = m.handle_message("top 1 by cagr")
         self.assertIn("CAGR", resp)
+
+    def test_screen_without_exchange(self, mock_cache_cls, mock_load):
+        """
+        Phase 2 — FSM must NOT crash when no exchange is available;
+        it must instead prompt the user to supply one.
+        """
+        self._setup_cache_mock(mock_cache_cls)
+        m = ConversationManager()
+        m.start()
+        # Do NOT provide an exchange — neither inline nor via session
+        resp = m.handle_message("top 10 by cagr")
+        # FSM must ask for the exchange, never raise an exception
+        self.assertIn("exchange", resp.lower())
 
 
 # ===========================================================================
