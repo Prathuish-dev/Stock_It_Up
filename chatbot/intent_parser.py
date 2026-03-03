@@ -18,16 +18,34 @@ COMMAND_MAP: dict[Intent, list[str]] = {
                             "list stocks", "show stocks", "list nse", "list bse",
                             "display companies", "list all", "companies", "list"],
     Intent.SEARCH_COMPANY: ["search", "find", "lookup", "look up"],
+    # SORT_RESULTS — checked before screener regexes to prevent regex overlap.
+    # Multi-word phrases first, then single triggers.
+    Intent.SORT_RESULTS:   ["sort by", "order by", "rank by", "filter by",
+                            "worst first", "best first", "show worst first", "show best first",
+                            "ascending", "descending"],
     Intent.REQUEST_EXPLANATION: ["explain", "why", "how", "detail", "breakdown"],
     Intent.REQUEST_ANALYSIS:    ["analyse", "analyze", "result", "rank", "recommend"],
 }
 
 _GREET_PHRASES = {"hi", "hello", "hey", "start"}
 
-# Regex that identifies a screener command (must appear BEFORE budget extraction
-# so "top 1 ..." is not mistaken for budget ₹1).
+# Regex that identifies a SCREEN_POSITION command  (checked first).
+# Matches: "best", "worst", "last",
+#          word ordinals: "second best", "third worst", "fifth last" …
+#          digit ordinals: "2nd best", "3rd worst", "10th last" …
+_POSITION_RE = re.compile(
+    r"\b"
+    r"(best|worst|last"
+    r"|(second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s*(best|worst|last)"
+    r"|\d+\s*(?:st|nd|rd|th)?\s*(best|worst|last)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Regex that identifies a SCREEN_TOP list command.
+# NOTE: best/worst/last are intentionally absent — handled by _POSITION_RE.
 _SCREENER_RE = re.compile(
-    r"\b(top|lowest|best|worst|safest)\b",
+    r"\b(top|lowest|safest)\b",
     re.IGNORECASE,
 )
 
@@ -59,8 +77,13 @@ class IntentParser:
         if normalized in _GREET_PHRASES:
             return Intent.GREET
 
-        # 3. Screener command — checked BEFORE budget/exchange extractors so that
-        #    a number like "top 1" is not swallowed by extract_budget().
+        # 3a. Positional command — checked BEFORE screener/budget so that
+        #     "best", "worst", "last", "2nd best" etc. route to SCREEN_POSITION
+        #     and are never swallowed by budget extraction or SCREEN_TOP.
+        if _POSITION_RE.search(normalized):
+            return Intent.SCREEN_POSITION
+
+        # 3b. Screener list command ("top N", "lowest N", "safest N")
         if _SCREENER_RE.search(normalized):
             return Intent.SCREEN_TOP
 
@@ -153,6 +176,145 @@ class IntentParser:
             "exchange":  exchange,
             "metric":    metric,
             "direction": direction,
+        }
+
+    def extract_sort_params(self, text: str) -> dict:
+        """
+        Parse parameters from a SORT_RESULTS command.
+
+        Returns
+        -------
+        dict with keys:
+            ``field``     : str   internal metric key (default ``"score"``)
+            ``direction`` : str   ``"asc"`` | ``"desc"``
+        """
+        lower = text.strip().lower()
+
+        # ---- Field: keyword matching with aliases ----
+        _SORT_ALIASES: dict[str, str] = {
+            # Multi-word first to avoid substring matches
+            "max drawdown":  "max_drawdown",
+            "max_drawdown":  "max_drawdown",
+            "avg volume":    "avg_volume",
+            "risk-adjusted": "sharpe",
+            "risk adjusted": "sharpe",
+            # Single-word
+            "return":      "cagr",
+            "returns":     "cagr",
+            "cagr":        "cagr",
+            "growth":      "cagr",
+            "risk":        "volatility",
+            "volatility":  "volatility",
+            "safe":        "volatility",
+            "safety":      "volatility",
+            "volume":      "avg_volume",
+            "liquidity":   "avg_volume",
+            "drawdown":    "max_drawdown",
+            "price":       "latest_price",
+            "sharpe":      "sharpe",
+            "sortino":     "sortino",
+            "score":       "score",
+            "rating":      "score",
+        }
+        field = "score"  # default
+        for keyword, mapped in _SORT_ALIASES.items():
+            if keyword in lower:
+                field = mapped
+                break
+
+        # ---- Direction ----
+        # Lower-is-better metrics: default direction is asc ("sort by risk" = safest first)
+        _LOWER_IS_BETTER = {"volatility", "max_drawdown"}
+        _ASC_TRIGGERS  = re.compile(
+            r"\b(asc|ascending|worst\s*first|lowest\s*first|show\s*worst)\b", re.IGNORECASE
+        )
+        _DESC_TRIGGERS = re.compile(
+            r"\b(desc|descending|best\s*first|highest\s*first|show\s*best)\b", re.IGNORECASE
+        )
+
+        if _ASC_TRIGGERS.search(lower):
+            direction = "asc"
+        elif _DESC_TRIGGERS.search(lower):
+            direction = "desc"
+        else:
+            # Default: asc for lower-is-better, desc for everything else
+            direction = "asc" if field in _LOWER_IS_BETTER else "desc"
+
+        return {"field": field, "direction": direction}
+
+    # Word ordinals recognised by extract_position_params
+    _WORD_ORDINALS: dict[str, int] = {
+        "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+        "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+    }
+
+    def extract_position_params(self, text: str) -> dict:
+        """
+        Parse parameters from a SCREEN_POSITION command.
+
+        Returns
+        -------
+        dict with keys:
+            ``position``  : int           (1-based; 1 = best or worst)
+            ``from_end``  : bool          (True = count from worst end)
+            ``exchange``  : Exchange | None
+            ``metric``    : str           (default ``"cagr"``)
+        """
+        lower = text.strip().lower()
+
+        # ---- Determine from_end (worst/last = True; best = False) ----
+        # Check word-ending trigger first so "worst" beats "best" if both present
+        from_end = bool(re.search(r"\b(worst|last)\b", lower, re.IGNORECASE))
+
+        # ---- Position: try digit ordinal first, then word ordinal ----
+        position = 1  # default
+
+        # Digit ordinal: "2nd best", "3 best", "10th worst"
+        digit_match = re.search(
+            r"\b(\d+)\s*(?:st|nd|rd|th)?\s*(?:best|worst|last)\b",
+            lower, re.IGNORECASE,
+        )
+        if digit_match:
+            position = int(digit_match.group(1))
+        else:
+            # Word ordinal: "second best", "third worst"
+            for word, num in self._WORD_ORDINALS.items():
+                if re.search(
+                    rf"\b{word}\s+(?:best|worst|last)\b", lower, re.IGNORECASE
+                ):
+                    position = num
+                    break
+
+        # ---- Exchange ----
+        exchange = self.extract_exchange(text)
+
+        # ---- Metric: reuse same alias table ----
+        _METRIC_ALIASES: dict[str, str] = {
+            "risk-adjusted": "sharpe", "risk adjusted": "sharpe",
+            "risk return":   "sharpe", "max drawdown":  "max_drawdown",
+            "max_drawdown":  "max_drawdown", "drawdown": "max_drawdown",
+            "mdd":           "max_drawdown", "downside risk": "max_drawdown",
+            "avg volume":    "avg_volume",   "avg_volume":    "avg_volume",
+            "latest price":  "latest_price",
+            "sharpe": "sharpe", "sortino": "sortino", "downside": "sortino",
+            "volume": "avg_volume", "risk": "volatility", "risky": "volatility",
+            "growth": "cagr",    "return": "cagr",    "cagr": "cagr",
+            "safe":  "volatility", "safest": "volatility",
+            "volatile": "volatility", "volatility": "volatility",
+            "price": "latest_price", "score": "score",
+            "rating": "score",       "ranked": "score",
+        }
+        metric = "cagr"
+        for keyword, mapped in _METRIC_ALIASES.items():
+            if keyword in lower:
+                metric = mapped
+                break
+
+        return {
+            "position": max(1, position),
+            "from_end": from_end,
+            "exchange": exchange,
+            "metric":   metric,
         }
 
     def extract_list_params(self, text: str) -> dict:

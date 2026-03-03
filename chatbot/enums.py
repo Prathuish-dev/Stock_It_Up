@@ -27,6 +27,8 @@ class Intent(Enum):
     PROVIDE_STOCKS = auto()
     REQUEST_ANALYSIS = auto()
     REQUEST_EXPLANATION = auto()
+    SORT_RESULTS   = auto()     # "sort by risk" / "worst first" / "order by returns"
+    SCREEN_POSITION = auto()     # "2nd best NSE by cagr" / "worst BSE by score" (single result)
     SCREEN_TOP = auto()         # "top 10 NSE by cagr" / "lowest 5 BSE by volatility"
     # Discoverability commands — global, work in any state
     LIST_COMPANIES = auto()     # list / list nse / list bse [page N]

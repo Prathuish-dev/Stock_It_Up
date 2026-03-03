@@ -74,8 +74,18 @@ class TestScreenerIntent(unittest.TestCase):
         )
 
     def test_screen_top_intent_best(self):
+        """'best' routes to SCREEN_POSITION (single-result positional mode).
+        Design: 'top N' → SCREEN_TOP list; 'best' → SCREEN_POSITION single card.
+        """
         self.assertEqual(
             self.parser.parse_intent("best 20 NSE by score"),
+            Intent.SCREEN_POSITION,
+        )
+
+    def test_screen_top_intent_top_keyword(self):
+        """'top N ...' must still route to SCREEN_TOP (list mode)."""
+        self.assertEqual(
+            self.parser.parse_intent("top 20 NSE by score"),
             Intent.SCREEN_TOP,
         )
 
@@ -434,6 +444,8 @@ class TestFormatScreenerResults(unittest.TestCase):
     def _sample_results(self, n=3):
         return [
             {
+                "rank":          i + 1,
+                "rank_label":    ["1st", "2nd", "3rd"][i],
                 "ticker":        f"TICK{i}",
                 "value":         0.15 - i * 0.01,
                 "metric":        "cagr",
@@ -482,6 +494,7 @@ class TestFormatScreenerResults(unittest.TestCase):
     def test_score_mode_footer_hint(self):
         results = [
             {
+                "rank": 1, "rank_label": "1st",
                 "ticker": "A", "value": 0.9, "metric": "score",
                 "display_value": "0.9000", "display_name": "Score",
                 "total_score": 0.9, "component_scores": {}, "weights_used": {},
@@ -492,6 +505,470 @@ class TestFormatScreenerResults(unittest.TestCase):
             results, metric="score", exchange="NSE", limit=1, horizon_years=3,
         )
         self.assertIn("cagr", out.lower())
+
+    def test_rank_label_in_output(self):
+        """format_screener_results must render ordinal rank labels."""
+        out = self.gen.format_screener_results(
+            self._sample_results(3), metric="cagr",
+            exchange="NSE", limit=3, horizon_years=3,
+        )
+        self.assertIn("1st", out)
+        self.assertIn("2nd", out)
+        self.assertIn("3rd", out)
+
+    def test_best_pick_callout_in_desc(self):
+        """Best-pick line must appear for direction='desc'."""
+        out = self.gen.format_screener_results(
+            self._sample_results(3), metric="cagr",
+            exchange="NSE", limit=3, horizon_years=3, direction="desc",
+        )
+        self.assertIn("Best pick", out)
+        self.assertIn("TICK0", out)   # first result = best
+
+    def test_no_best_pick_callout_in_asc(self):
+        """Best-pick callout must NOT appear for direction='asc' (lowest mode)."""
+        out = self.gen.format_screener_results(
+            self._sample_results(3), metric="volatility",
+            exchange="NSE", limit=3, horizon_years=3, direction="asc",
+        )
+        self.assertNotIn("Best pick", out)
+
+
+# ===========================================================================
+# 6. ScreenerEngine rank fields
+# ===========================================================================
+
+class TestScreenerEngineRankFields(unittest.TestCase):
+    """Verify that rank / rank_label are correctly attached to each result."""
+
+    def _mock_loader(self, tickers, dfs):
+        loader = MagicMock()
+        loader.list_available.return_value = tickers
+        df_map = dict(zip(tickers, dfs))
+        loader.load_stock.side_effect = lambda ex, t: df_map[t]
+        return loader
+
+    def test_metric_mode_rank_field_present(self):
+        loader = self._mock_loader(["A", "B", "C"], [_DF_A, _DF_B, _DF_C])
+        results = ScreenerEngine.run(
+            exchange="NSE", metric="cagr", limit=3,
+            horizon_years=3, direction="desc", data_loader=loader,
+        )
+        for r in results:
+            self.assertIn("rank", r)
+            self.assertIn("rank_label", r)
+
+    def test_metric_mode_rank_starts_at_one(self):
+        loader = self._mock_loader(["A", "B", "C"], [_DF_A, _DF_B, _DF_C])
+        results = ScreenerEngine.run(
+            exchange="NSE", metric="cagr", limit=3,
+            horizon_years=3, direction="desc", data_loader=loader,
+        )
+        self.assertEqual(results[0]["rank"], 1)
+        self.assertEqual(results[0]["rank_label"], "1st")
+
+    def test_metric_mode_rank_sequential(self):
+        loader = self._mock_loader(["A", "B", "C"], [_DF_A, _DF_B, _DF_C])
+        results = ScreenerEngine.run(
+            exchange="NSE", metric="cagr", limit=3,
+            horizon_years=3, direction="desc", data_loader=loader,
+        )
+        ranks = [r["rank"] for r in results]
+        self.assertEqual(ranks, list(range(1, len(results) + 1)))
+
+    def test_score_mode_rank_field_present(self):
+        loader = self._mock_loader(["A", "B", "C"], [_DF_A, _DF_B, _DF_C])
+        results = ScreenerEngine.run(
+            exchange="NSE", metric="score", limit=3,
+            horizon_years=3, direction="desc", data_loader=loader,
+        )
+        for r in results:
+            self.assertIn("rank", r)
+            self.assertIn("rank_label", r)
+
+    def test_score_mode_rank_labels_correct(self):
+        loader = self._mock_loader(["A", "B", "C"], [_DF_A, _DF_B, _DF_C])
+        results = ScreenerEngine.run(
+            exchange="NSE", metric="score", limit=3,
+            horizon_years=3, direction="desc", data_loader=loader,
+        )
+        expected_labels = ["1st", "2nd", "3rd"]
+        for r, expected in zip(results, expected_labels):
+            self.assertEqual(r["rank_label"], expected)
+
+    def test_ordinal_11th_12th_13th_special_case(self):
+        """11, 12, 13 must use 'th', not 'st'/'nd'/'rd'."""
+        from chatbot.screener_engine import _ordinal
+        self.assertEqual(_ordinal(11), "11th")
+        self.assertEqual(_ordinal(12), "12th")
+        self.assertEqual(_ordinal(13), "13th")
+        self.assertEqual(_ordinal(21), "21st")
+        self.assertEqual(_ordinal(22), "22nd")
+        self.assertEqual(_ordinal(23), "23rd")
+        self.assertEqual(_ordinal(111), "111th")
+
+
+# ===========================================================================
+# 7. Positional Queries  (SCREEN_POSITION intent + fetch_position)
+# ===========================================================================
+
+class TestPositionalQueries(unittest.TestCase):
+
+    def setUp(self):
+        self.parser = IntentParser()
+        self.gen = ResponseGenerator.__new__(ResponseGenerator)
+        self.gen._loader = MagicMock()
+        self.gen._engine = MagicMock()
+
+    def _mock_loader(self, tickers, dfs):
+        loader = MagicMock()
+        loader.list_available.return_value = tickers
+        df_map = dict(zip(tickers, dfs))
+        loader.load_stock.side_effect = lambda ex, t: df_map[t]
+        return loader
+
+    # --- Intent detection ---
+
+    def test_worst_intent_is_screen_position(self):
+        self.assertEqual(self.parser.parse_intent("worst NSE by cagr"), Intent.SCREEN_POSITION)
+
+    def test_best_intent_is_screen_position(self):
+        self.assertEqual(self.parser.parse_intent("best NSE by cagr"), Intent.SCREEN_POSITION)
+
+    def test_last_intent_is_screen_position(self):
+        self.assertEqual(self.parser.parse_intent("last BSE by score"), Intent.SCREEN_POSITION)
+
+    def test_2nd_best_intent_is_screen_position(self):
+        self.assertEqual(self.parser.parse_intent("2nd best NSE by cagr"), Intent.SCREEN_POSITION)
+
+    def test_top_still_screen_top(self):
+        """'top N ...' must NOT be confused with SCREEN_POSITION."""
+        self.assertEqual(self.parser.parse_intent("top 5 NSE by cagr"), Intent.SCREEN_TOP)
+
+    def test_lowest_still_screen_top(self):
+        self.assertEqual(self.parser.parse_intent("lowest 10 NSE by cagr"), Intent.SCREEN_TOP)
+
+    # --- extract_position_params ---
+
+    def test_params_worst_cagr(self):
+        p = self.parser.extract_position_params("worst NSE by cagr")
+        self.assertEqual(p["position"], 1)
+        self.assertTrue(p["from_end"])
+        self.assertEqual(p["metric"], "cagr")
+        self.assertEqual(p["exchange"], Exchange.NSE)
+
+    def test_params_best_score(self):
+        p = self.parser.extract_position_params("best BSE by score")
+        self.assertEqual(p["position"], 1)
+        self.assertFalse(p["from_end"])
+        self.assertEqual(p["metric"], "score")
+
+    def test_params_2nd_best_digit_ordinal(self):
+        p = self.parser.extract_position_params("2nd best NSE by cagr")
+        self.assertEqual(p["position"], 2)
+        self.assertFalse(p["from_end"])
+
+    def test_params_3rd_worst_digit_ordinal(self):
+        p = self.parser.extract_position_params("3rd worst BSE by sharpe")
+        self.assertEqual(p["position"], 3)
+        self.assertTrue(p["from_end"])
+
+    def test_params_second_last_word_ordinal(self):
+        p = self.parser.extract_position_params("second last NSE by cagr")
+        self.assertEqual(p["position"], 2)
+        self.assertTrue(p["from_end"])
+
+    def test_params_fifth_best_word_ordinal(self):
+        p = self.parser.extract_position_params("fifth best NSE by volatility")
+        self.assertEqual(p["position"], 5)
+        self.assertFalse(p["from_end"])
+
+    def test_params_no_exchange_returns_none(self):
+        p = self.parser.extract_position_params("worst by cagr")
+        self.assertIsNone(p["exchange"])
+
+    def test_params_default_metric_is_cagr(self):
+        p = self.parser.extract_position_params("best NSE")
+        self.assertEqual(p["metric"], "cagr")
+
+    # --- fetch_position ---
+
+    def test_fetch_position_best_cagr_returns_highest(self):
+        """best by CAGR should return the stock with the highest CAGR."""
+        loader = self._mock_loader(["A", "B", "C"], [_DF_A, _DF_B, _DF_C])
+        result = ScreenerEngine.fetch_position(
+            exchange="NSE", metric="cagr", position=1, from_end=False,
+            horizon_years=3, data_loader=loader,
+        )
+        self.assertIsNotNone(result)
+        # _DF_A has highest growth rate — should be ranked 1st best
+        self.assertEqual(result["ticker"], "A")
+        self.assertFalse(result["from_end"])
+        self.assertEqual(result["direction_label"], "from the top")
+
+    def test_fetch_position_worst_cagr_returns_lowest(self):
+        """worst by CAGR should return the stock with the lowest CAGR."""
+        loader = self._mock_loader(["A", "B", "C"], [_DF_A, _DF_B, _DF_C])
+        result = ScreenerEngine.fetch_position(
+            exchange="NSE", metric="cagr", position=1, from_end=True,
+            horizon_years=3, data_loader=loader,
+        )
+        self.assertIsNotNone(result)
+        # _DF_C has the lowest growth → worst CAGR
+        self.assertEqual(result["ticker"], "C")
+        self.assertTrue(result["from_end"])
+        self.assertEqual(result["direction_label"], "from the bottom")
+
+    def test_fetch_position_worst_volatility_returns_highest_vol(self):
+        """
+        ⚠️ Critical: worst by volatility = HIGHEST volatility
+        (volatility is lower_is_better, so worst = highest value).
+        All three test DFs have near-identical tiny volatility (growth=constant),
+        so we build one high-vol DF to confirm the correct stock is returned.
+        """
+        import numpy as np
+        # High-volatility DF: prices jump up and down wildly
+        n = 300
+        dates  = pd.date_range(end=datetime.today(), periods=n, freq="B")
+        prices = [1000 + 500 * ((-1) ** i) for i in range(n)]   # alternating 500/1500
+        df_high_vol = pd.DataFrame({
+            "Date": dates, "Open": prices, "High": prices,
+            "Low": prices, "Close": prices, "Adj Close": prices,
+            "Volume": [1_000_000] * n,
+        })
+
+        loader = self._mock_loader(["CALM", "WILD"], [_DF_A, df_high_vol])
+        result = ScreenerEngine.fetch_position(
+            exchange="NSE", metric="volatility", position=1, from_end=True,
+            horizon_years=3, data_loader=loader,
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result["ticker"], "WILD",
+                         "worst by volatility must return the most volatile stock")
+
+    def test_fetch_position_2nd_best_not_first(self):
+        """2nd best must differ from 1st best."""
+        loader = self._mock_loader(["A", "B", "C"], [_DF_A, _DF_B, _DF_C])
+        best   = ScreenerEngine.fetch_position("NSE", "cagr", 1, False, 3, loader)
+        second = ScreenerEngine.fetch_position("NSE", "cagr", 2, False, 3, loader)
+        self.assertIsNotNone(best)
+        self.assertIsNotNone(second)
+        self.assertNotEqual(best["ticker"], second["ticker"])
+
+    def test_fetch_position_out_of_range_returns_none(self):
+        loader = self._mock_loader(["A"], [_DF_A])
+        result = ScreenerEngine.fetch_position("NSE", "cagr", 100, False, 3, loader)
+        self.assertIsNone(result)
+
+    def test_fetch_position_rank_label_correct(self):
+        loader = self._mock_loader(["A", "B", "C"], [_DF_A, _DF_B, _DF_C])
+        result = ScreenerEngine.fetch_position("NSE", "cagr", 3, False, 3, loader)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["rank"], 3)
+        self.assertEqual(result["rank_label"], "3rd")
+
+    def test_deterministic_tie_breaking(self):
+        """Identical metric values must always produce alphabetical ordering."""
+        # All three DFs are the same → same CAGR → tie
+        loader = self._mock_loader(["ZZZ", "AAA", "MMM"], [_DF_A, _DF_A, _DF_A])
+        results = ScreenerEngine.run(
+            exchange="NSE", metric="cagr", limit=3,
+            horizon_years=3, direction="desc", data_loader=loader,
+        )
+        tickers = [r["ticker"] for r in results]
+        self.assertEqual(tickers, sorted(tickers),
+                         "Tied values must produce alphabetical ticker order")
+
+    # --- format_position_result ---
+
+    def _make_position_result(self):
+        return {
+            "rank": 2, "rank_label": "2nd",
+            "ticker": "RELIANCE", "value": 0.18,
+            "metric": "cagr", "display_value": "+18.00%",
+            "display_name": "CAGR",
+            "from_end": False,
+            "direction_label": "from the top",
+        }
+
+    def test_format_position_result_contains_ticker(self):
+        out = self.gen.format_position_result(
+            self._make_position_result(),
+            position=2, from_end=False, metric="cagr",
+            exchange="NSE", horizon_years=3,
+        )
+        self.assertIn("RELIANCE", out)
+
+    def test_format_position_result_contains_rank_label(self):
+        out = self.gen.format_position_result(
+            self._make_position_result(),
+            position=2, from_end=False, metric="cagr",
+            exchange="NSE", horizon_years=3,
+        )
+        self.assertIn("2nd", out)
+        self.assertIn("from the top", out)
+
+    def test_format_position_result_none_graceful(self):
+        out = self.gen.format_position_result(
+            None, position=100, from_end=False, metric="cagr",
+            exchange="NSE", horizon_years=3,
+        )
+        self.assertIn("Not enough data", out)
+        self.assertIn("100th", out)
+
+    def test_format_position_result_worst_label(self):
+        result = self._make_position_result()
+        result["from_end"] = True
+        result["direction_label"] = "from the bottom"
+        out = self.gen.format_position_result(
+            result, position=2, from_end=True, metric="cagr",
+            exchange="NSE", horizon_years=3,
+        )
+        self.assertIn("Worst", out)
+        self.assertIn("from the bottom", out)
+
+
+# ===========================================================================
+# 8. Sort / Filter for Analysis Results
+# ===========================================================================
+
+class TestSortResults(unittest.TestCase):
+
+    def setUp(self):
+        self.parser = IntentParser()
+        self.gen = ResponseGenerator.__new__(ResponseGenerator)
+        self.gen._loader = MagicMock()
+        self.gen._engine = MagicMock()
+
+    # ---- Intent detection ----
+
+    def test_sort_by_risk_intent(self):
+        self.assertEqual(self.parser.parse_intent("sort by risk"), Intent.SORT_RESULTS)
+
+    def test_sort_by_returns_intent(self):
+        self.assertEqual(self.parser.parse_intent("sort by returns"), Intent.SORT_RESULTS)
+
+    def test_worst_first_intent(self):
+        self.assertEqual(self.parser.parse_intent("worst first"), Intent.SORT_RESULTS)
+
+    def test_order_by_volume_intent(self):
+        self.assertEqual(self.parser.parse_intent("order by volume"), Intent.SORT_RESULTS)
+
+    def test_ascending_keyword_intent(self):
+        self.assertEqual(self.parser.parse_intent("ascending"), Intent.SORT_RESULTS)
+
+    # ---- extract_sort_params ----
+
+    def test_params_sort_by_returns(self):
+        p = self.parser.extract_sort_params("sort by returns")
+        self.assertEqual(p["field"], "cagr")
+        self.assertEqual(p["direction"], "desc")   # higher_is_better → desc default
+
+    def test_params_sort_by_risk_defaults_asc(self):
+        """sort by risk → volatility asc (safest first — lower_is_better)."""
+        p = self.parser.extract_sort_params("sort by risk")
+        self.assertEqual(p["field"], "volatility")
+        self.assertEqual(p["direction"], "asc")    # lower_is_better → asc default
+
+    def test_params_worst_first_direction(self):
+        p = self.parser.extract_sort_params("worst first")
+        self.assertEqual(p["direction"], "asc")
+
+    def test_params_explicit_asc_override(self):
+        """Explicit 'asc' keyword overrides the lower-is-better default for any field."""
+        p = self.parser.extract_sort_params("sort by cagr asc")
+        self.assertEqual(p["field"], "cagr")
+        self.assertEqual(p["direction"], "asc")
+
+    def test_params_explicit_desc_override(self):
+        p = self.parser.extract_sort_params("sort by risk desc")
+        self.assertEqual(p["field"], "volatility")
+        self.assertEqual(p["direction"], "desc")   # explicit desc overrides default
+
+    def test_params_sort_by_volume(self):
+        p = self.parser.extract_sort_params("sort by volume")
+        self.assertEqual(p["field"], "avg_volume")
+        self.assertEqual(p["direction"], "desc")
+
+    def test_params_default_field_score(self):
+        """No field keyword → default to score."""
+        p = self.parser.extract_sort_params("best first")
+        self.assertEqual(p["field"], "score")
+        self.assertEqual(p["direction"], "desc")
+
+    # ---- Sorting logic ----
+
+    def _make_results(self):
+        """Three analysis result dicts with different CAGR and volatility."""
+        def _r(ticker, score, cagr, vol, price=1000.0):
+            return {
+                "ticker": ticker,
+                "total_score": score,
+                "component_scores": {},
+                "weights_used": {},
+                "metrics": {
+                    "cagr": cagr,
+                    "volatility": vol,
+                    "avg_volume": 1_000_000.0,
+                    "latest_price": price,
+                },
+                "rank": 1,
+                "rank_label": "1st",
+            }
+        return [
+            _r("A", 0.90, 0.20, 0.10),  # best score, high cagr, low vol
+            _r("B", 0.70, 0.15, 0.30),  # mid score
+            _r("C", 0.50, 0.05, 0.05),  # low score, low cagr, safest
+        ]
+
+    def test_sort_by_cagr_desc_order(self):
+        results = self._make_results()
+        field, direction = "cagr", "desc"
+        sorted_r = sorted(results,
+                          key=lambda r: r["metrics"].get(field, 0.0),
+                          reverse=(direction == "desc"))
+        tickers = [r["ticker"] for r in sorted_r]
+        self.assertEqual(tickers, ["A", "B", "C"])
+
+    def test_sort_by_volatility_asc_safest_first(self):
+        results = self._make_results()
+        sorted_r = sorted(results,
+                          key=lambda r: r["metrics"].get("volatility", 0.0),
+                          reverse=False)
+        tickers = [r["ticker"] for r in sorted_r]
+        # C has lowest vol (0.05), A has 0.10, B has 0.30
+        self.assertEqual(tickers, ["C", "A", "B"])
+
+    def test_context_results_not_mutated(self):
+        """Sorting must not change the original context.results order."""
+        original = self._make_results()
+        import copy
+        original_copy = copy.deepcopy(original)
+        _ = sorted(original, key=lambda r: r["metrics"]["volatility"])
+        # original itself must be unchanged
+        for orig, copy_ in zip(original, original_copy):
+            self.assertEqual(orig["ticker"], copy_["ticker"])
+
+    # ---- format_sorted_table ----
+
+    def test_format_sorted_table_has_re_sorted_header(self):
+        results = self._make_results()
+        out = self.gen.format_sorted_table(results, "cagr", "desc", budget=None)
+        self.assertIn("Re-sorted by", out)
+        self.assertIn("CAGR", out)
+
+    def test_format_sorted_table_re_numbers_ranks(self):
+        results = self._make_results()
+        out = self.gen.format_sorted_table(results, "cagr", "desc", budget=None)
+        self.assertIn("1st", out)
+        self.assertIn("2nd", out)
+        self.assertIn("3rd", out)
+
+    def test_format_sorted_table_shows_score_leader(self):
+        results = self._make_results()
+        out = self.gen.format_sorted_table(results, "volatility", "asc", budget=None)
+        self.assertIn("Best pick (by score)", out)   # score leader A mentioned
+        self.assertIn("A", out)
 
 
 if __name__ == "__main__":

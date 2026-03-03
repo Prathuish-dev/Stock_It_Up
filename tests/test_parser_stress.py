@@ -94,9 +94,18 @@ class TestParserNoisyInput(unittest.TestCase):
         )
 
     def test_noisy_top_score(self):
-        """Noisy prefix before 'best' must still resolve to SCREEN_TOP."""
+        """'best' alone must route to SCREEN_POSITION (positional mode, not list mode).
+        Design rule: 'top N' → SCREEN_TOP; 'best' → SCREEN_POSITION (single result).
+        """
         self.assertEqual(
             self.parser.parse_intent("i would like to see the best 5 BSE stocks"),
+            Intent.SCREEN_POSITION,
+        )
+
+    def test_noisy_top_with_top_keyword(self):
+        """'top N' embedded in noisy text must still fire SCREEN_TOP (list mode)."""
+        self.assertEqual(
+            self.parser.parse_intent("i would like to see the top 5 BSE stocks"),
             Intent.SCREEN_TOP,
         )
 

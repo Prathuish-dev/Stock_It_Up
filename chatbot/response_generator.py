@@ -217,13 +217,20 @@ class ResponseGenerator:
         """Return the full command reference card."""
         return (
             "--- Supported Commands ---\n"
-            "\nScreener (works any time):\n"
+            "\nScreener — list mode (top-N results):\n"
             "  top 10 NSE by cagr         Best CAGR on NSE\n"
             "  top 5 BSE by score         Weighted score ranking (BSE)\n"
             "  top 10 NSE by sharpe       Best risk-adjusted return (Sharpe Ratio)\n"
             "  lowest 10 NSE by volatility Safest stocks (lowest volatility)\n"
             "  top 20 BSE by volume       Most liquid BSE stocks\n"
             "  Note: 'top N by volatility' = most volatile; use 'lowest' for safest\n"
+            "\nScreener — positional mode (single stock):\n"
+            "  best NSE by cagr           Single best CAGR stock\n"
+            "  worst BSE by cagr          Single worst CAGR stock\n"
+            "  2nd best NSE by score      2nd highest score\n"
+            "  3rd worst BSE by sharpe    3rd lowest Sharpe\n"
+            "  second last NSE by cagr    2nd worst CAGR\n"
+            "  last BSE by volatility     Most volatile stock (highest vol)\n"
             "\nDiscoverability:\n"
             "  list                  Show all companies (current exchange)\n"
             "  list NSE              Show all NSE companies\n"
@@ -257,6 +264,66 @@ class ResponseGenerator:
             "Type 'list NSE' or 'list BSE' to browse, "
             "or 'top 10 NSE by cagr' to screen the market."
         )
+
+    # ------------------------------------------------------------------ #
+    #  Positional result formatter
+    # ------------------------------------------------------------------ #
+
+    def format_position_result(
+        self,
+        result: "dict | None",
+        position: int,
+        from_end: bool,
+        metric: str,
+        exchange: str,
+        horizon_years: int,
+    ) -> str:
+        """
+        Render a single positional stock result as a CLI card.
+
+        Parameters
+        ----------
+        result : dict | None
+            Output from ``ScreenerEngine.fetch_position()``.
+            ``None`` means not enough data to reach that position.
+        """
+        from chatbot.screener_engine import _ordinal  # avoid circular at module level
+        info         = METRIC_REGISTRY.get(metric, {})
+        display_name = info.get("display", metric.upper())
+        rank_label   = _ordinal(position)
+        plural_yr    = "year" if horizon_years == 1 else "years"
+        end_label    = "Worst" if from_end else "Best"
+
+        sep = "=" * 56
+
+        if result is None:
+            return (
+                f"{sep}\n"
+                f"  {rank_label} {end_label}  {exchange}  by {display_name}"
+                f"  ({horizon_years}-{plural_yr} horizon)\n"
+                f"{sep}\n"
+                f"  Not enough data to determine the {rank_label} {end_label.lower()}\n"
+                f"  {exchange} stock by {display_name}.\n\n"
+                f"  Tip: 'top 10 {exchange} by {metric}' shows how many stocks are available."
+                f"\n{sep}"
+            )
+
+        direction_label = result.get("direction_label",
+                                     "from the bottom" if from_end else "from the top")
+
+        lines = [
+            sep,
+            f"  {rank_label} {end_label}  {exchange}  by {display_name}"
+            f"  ({horizon_years}-{plural_yr} horizon)",
+            "-" * 56,
+            f"  Ticker  : {result['ticker']}",
+            f"  {display_name:<9}: {result['display_value']}",
+            f"  Rank    : {rank_label} {direction_label}",
+            sep,
+            f"\nTip: 'explain {result['ticker']}' for a full score breakdown.",
+            f"     'top 10 {exchange} by {metric}' to see the full ranked list.",
+        ]
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------ #
     #  Screener results formatter
@@ -301,22 +368,28 @@ class ResponseGenerator:
         rank_word    = "Lowest" if direction == "asc" else "Top"
         plural_yr    = "year" if horizon_years == 1 else "years"
 
-        sep   = "=" * 52
+        sep   = "=" * 58
         lines = [
             sep,
             f"{rank_word} {len(results)} {exchange}  by {display_name}  "
             f"({horizon_years}-{plural_yr} horizon)",
-            "-" * 52,
-            f"{'#':<4} {'TICKER':<14} {display_name:>16}",
-            "-" * 52,
+            "-" * 58,
+            f"{'RANK':<8} {'TICKER':<14} {display_name:>16}",
+            "-" * 58,
         ]
 
-        for i, r in enumerate(results, 1):
+        for r in results:
+            rank_lbl = r.get("rank_label", str(r.get("rank", "")))
             lines.append(
-                f"{i:<4} {r['ticker']:<14} {r['display_value']:>16}"
+                f"{rank_lbl:<8} {r['ticker']:<14} {r['display_value']:>16}"
             )
 
         lines.append(sep)
+
+        # Best-pick callout
+        if results and direction == "desc":
+            best = results[0]
+            lines.append(f"\n🏆 Best pick: {best['ticker']} ({best['display_value']})")
 
         scanned = len(results)
         footer_parts = [
@@ -329,7 +402,7 @@ class ResponseGenerator:
         if direction == "desc":
             footer_parts.append("Use 'lowest' instead of 'top' to reverse order.")
 
-        lines.append("\n" + "  ".join(footer_parts))
+        lines.append("  ".join(footer_parts))
         return "\n".join(lines)
 
     def explanation(
@@ -409,7 +482,7 @@ class ResponseGenerator:
         sep = "="*72
         lines = [
             sep,
-            f"{'RK':<4} {'TICKER':<14} {'SCORE':>7}  "
+            f"{'RANK':<8} {'TICKER':<14} {'SCORE':>7}  "
             f"{'CAGR':>8}  {'VOLAT':>7}  {'PRICE (Rs.)':>12}  {'SHARES':>8}",
             "-"*72,
         ]
@@ -419,6 +492,7 @@ class ResponseGenerator:
             cagr_str  = f"{m['cagr']*100:+.1f}%"
             volat_str = f"{m['volatility']*100:.1f}%"
             price_str = f"{m['latest_price']:,.1f}"
+            rank_lbl  = r.get("rank_label", f"{i}")
 
             if budget and m["latest_price"] > 0:
                 shares = int(budget // m["latest_price"])
@@ -427,13 +501,13 @@ class ResponseGenerator:
                 shares_str = "-"
 
             lines.append(
-                f"{i:<4} {r['ticker']:<14} {r['total_score']:>7.4f}  "
+                f"{rank_lbl:<8} {r['ticker']:<14} {r['total_score']:>7.4f}  "
                 f"{cagr_str:>8}  {volat_str:>7}  {price_str:>12}  {shares_str:>8}"
             )
 
         lines.append(sep)
         top = results[0]["ticker"]
-        lines.append(f"\nTop pick: {top}")
+        lines.append(f"\n🏆 Best pick: {top}")
         if budget:
             top_price  = results[0]["metrics"]["latest_price"]
             top_shares = int(budget // top_price) if top_price > 0 else 0
@@ -446,6 +520,84 @@ class ResponseGenerator:
             )
         lines.append(
             "\nType 'explain <TICKER>' for full score formula, "
+            "'sort by <field>' to re-sort, "
             "'restart' to re-run, or 'exit' to quit."
+        )
+        return "\n".join(lines)
+
+    def format_sorted_table(
+        self,
+        results: List[Dict],
+        sort_field: str,
+        direction: str,
+        budget: Optional[float],
+    ) -> str:
+        """
+        Render the analysis results re-sorted by *sort_field* in *direction* order.
+
+        Identical layout to ``_format_table`` but with a sort header and
+        re-numbered ranks.  The original score-based order is NOT changed in
+        ``context.results`` — this method just renders a view.
+        """
+        from chatbot.screener_engine import _ordinal
+        from chatbot.constants import METRIC_REGISTRY
+
+        info          = METRIC_REGISTRY.get(sort_field, {})
+        display_name  = info.get("display", sort_field.upper())
+        arrow         = "↑" if direction == "asc" else "↓"
+        lower_better  = info.get("higher_is_better") is False
+
+        if lower_better and direction == "asc":
+            sort_note = f"  ({display_name} ↑  lowest / safest first)"
+        elif lower_better and direction == "desc":
+            sort_note = f"  ({display_name} ↓  highest / riskiest first)"
+        elif direction == "asc":
+            sort_note = f"  ({display_name} ↑  lowest first)"
+        else:
+            sort_note = f"  ({display_name} ↓  highest first)"
+
+        sep = "=" * 72
+        lines = [
+            sep,
+            f"  Re-sorted by: {display_name} {arrow}{sort_note}",
+            f"{'RANK':<8} {'TICKER':<14} {'SCORE':>7}  "
+            f"{'CAGR':>8}  {'VOLAT':>7}  {'PRICE (Rs.)':>12}  {'SHARES':>8}",
+            "-" * 72,
+        ]
+
+        for i, r in enumerate(results, 1):
+            m          = r["metrics"]
+            rank_lbl   = _ordinal(i)
+            cagr_str   = f"{m['cagr']*100:+.1f}%"
+            volat_str  = f"{m['volatility']*100:.1f}%"
+            price_str  = f"{m['latest_price']:,.1f}"
+
+            if budget and m["latest_price"] > 0:
+                shares     = int(budget // m["latest_price"])
+                shares_str = f"{shares:,}"
+            else:
+                shares_str = "-"
+
+            lines.append(
+                f"{rank_lbl:<8} {r['ticker']:<14} {r['total_score']:>7.4f}  "
+                f"{cagr_str:>8}  {volat_str:>7}  {price_str:>12}  {shares_str:>8}"
+            )
+
+        lines.append(sep)
+
+        # ---- Best pick callout uses position-0 of the re-sorted list ----
+        if sort_field == "score":
+            top = results[0]["ticker"]
+            lines.append(f"\n🏆 Best pick (by score): {top}")
+        else:
+            # Remind user who owns the original top score
+            score_leader = max(results, key=lambda r: r["total_score"])["ticker"]
+            view_leader  = results[0]["ticker"]
+            lines.append(f"\n1st by {display_name}: {view_leader}")
+            lines.append(f"🏆 Best pick (by score): {score_leader}")
+
+        lines.append(
+            "\nType 'sort by score' to restore original ranking, "
+            "'explain <TICKER>' for breakdown, or 'sort by <field>' to re-sort."
         )
         return "\n".join(lines)

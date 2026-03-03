@@ -53,6 +53,15 @@ def _format_value(metric: str, raw: float) -> str:
     return f"{val:.4f}"
 
 
+def _ordinal(n: int) -> str:
+    """Return the ordinal string for a positive integer (1→'1st', 2→'2nd', …)."""
+    if 11 <= (n % 100) <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
 # ---------------------------------------------------------------------------
 # ScreenerEngine
 # ---------------------------------------------------------------------------
@@ -172,18 +181,24 @@ class ScreenerEngine:
         sys.stdout.write(f" done ({processed} tickers scanned)\n")
         sys.stdout.flush()
 
-        top = heap_fn(limit, candidates, key=heap_key)
+        # Deterministic tie-breaking: secondary sort by ticker name ascending
+        top = sorted(
+            heap_fn(limit, candidates, key=heap_key),
+            key=lambda x: (-x[0] if direction == "desc" else x[0], x[1]),
+        )
 
         info = METRIC_REGISTRY.get(metric, {})
         return [
             {
+                "rank":          i,
+                "rank_label":    _ordinal(i),
                 "ticker":        ticker,
                 "value":         value,
                 "metric":        metric,
                 "display_value": _format_value(metric, value),
                 "display_name":  info.get("display", metric.upper()),
             }
-            for value, ticker in top
+            for i, (value, ticker) in enumerate(top, 1)
         ]
 
     # ------------------------------------------------------------------
@@ -209,17 +224,23 @@ class ScreenerEngine:
                 continue
             candidates.append((value, ticker))
 
-        top  = heap_fn(limit, candidates, key=heap_key)
+        # Deterministic tie-breaking: secondary sort by ticker name ascending
+        top = sorted(
+            heap_fn(limit, candidates, key=heap_key),
+            key=lambda x: (-x[0] if direction == "desc" else x[0], x[1]),
+        )
         info = METRIC_REGISTRY.get(metric, {})
         return [
             {
+                "rank":          i,
+                "rank_label":    _ordinal(i),
                 "ticker":        ticker,
                 "value":         value,
                 "metric":        metric,
                 "display_value": _format_value(metric, value),
                 "display_name":  info.get("display", metric.upper()),
             }
-            for value, ticker in top
+            for i, (value, ticker) in enumerate(top, 1)
         ]
 
     @staticmethod
@@ -252,10 +273,20 @@ class ScreenerEngine:
 
         if direction == "asc":
             scored = list(reversed(scored))
+        # Deterministic tie-breaking: secondary sort by ticker name
+        scored = sorted(
+            scored,
+            key=lambda e: (
+                e["total_score"] if direction == "asc" else -e["total_score"],
+                e["ticker"],
+            ),
+        )
 
         results = []
-        for entry in scored[:limit]:
+        for i, entry in enumerate(scored[:limit], 1):
             results.append({
+                "rank":             i,
+                "rank_label":       _ordinal(i),
                 "ticker":           entry["ticker"],
                 "value":            entry["total_score"],
                 "metric":           "score",
@@ -322,10 +353,20 @@ class ScreenerEngine:
         # ScoringEngine already returns sorted descending by total_score.
         if direction == "asc":
             scored = list(reversed(scored))
+        # Deterministic tie-breaking: secondary sort by ticker name
+        scored = sorted(
+            scored,
+            key=lambda e: (
+                e["total_score"] if direction == "asc" else -e["total_score"],
+                e["ticker"],
+            ),
+        )
 
         results = []
-        for entry in scored[:limit]:
+        for i, entry in enumerate(scored[:limit], 1):
             results.append({
+                "rank":             i,
+                "rank_label":       _ordinal(i),
                 "ticker":           entry["ticker"],
                 "value":            entry["total_score"],
                 "metric":           "score",
@@ -337,3 +378,68 @@ class ScreenerEngine:
                 "metrics":          entry["metrics"],
             })
         return results
+
+    # ------------------------------------------------------------------
+    # Positional query — fetch a single stock at a specific rank
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def fetch_position(
+        exchange: str,
+        metric: str,
+        position: int,
+        from_end: bool,
+        horizon_years: int,
+        data_loader: "DataLoader",
+        risk_profile=None,
+        weights: dict | None = None,
+        cache: Optional["MetricCache"] = None,
+    ) -> "dict | None":
+        """
+        Return the single stock dict at the requested ordinal position.
+
+        Position is 1-based.  ``from_end=True`` counts from the worst end.
+
+        Metric-aware direction
+        ----------------------
+        Uses ``METRIC_REGISTRY[metric]["higher_is_better"]`` to decide which
+        scan order produces the correct 'best' / 'worst' ordering:
+
+          * ``worst by cagr``       → asc  (low CAGR first)
+          * ``worst by volatility`` → desc (high vol first — higher = worse)
+          * ``best by volatility``  → asc  (low vol first — lower = safer)
+        """
+        info = METRIC_REGISTRY.get(metric, {})
+        higher_is_better = info.get("higher_is_better", True)
+        if higher_is_better is None:
+            higher_is_better = True  # neutral metrics default to desc for 'best'
+
+        if from_end:
+            # worst end: for higher-is-better metrics scan ascending (lowest first)
+            direction = "asc" if higher_is_better else "desc"
+        else:
+            # best end: for higher-is-better metrics scan descending (highest first)
+            direction = "desc" if higher_is_better else "asc"
+
+        fetch_limit = max(position + 10, 50)
+        results = ScreenerEngine.run(
+            exchange=exchange,
+            metric=metric,
+            limit=fetch_limit,
+            horizon_years=horizon_years,
+            direction=direction,
+            data_loader=data_loader,
+            risk_profile=risk_profile,
+            weights=weights,
+            cache=cache,
+        )
+
+        if not results or position > len(results):
+            return None
+
+        row = results[position - 1].copy()
+        row["rank"]            = position
+        row["rank_label"]      = _ordinal(position)
+        row["from_end"]        = from_end
+        row["direction_label"] = "from the bottom" if from_end else "from the top"
+        return row

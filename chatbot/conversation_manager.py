@@ -108,6 +108,67 @@ class ConversationManager:
                 f"Screener queries will now be instant."
             )
 
+        if intent == Intent.SORT_RESULTS:
+            if not self.context.results:
+                return (
+                    "No analysis results to sort yet.\n"
+                    "Complete an analysis session first, then type:\n"
+                    "  'sort by risk'     → safest first\n"
+                    "  'sort by returns'  → highest CAGR first\n"
+                    "  'sort by volume'   → most liquid first\n"
+                    "  'sort by score'    → restore original ranking"
+                )
+            params    = self.parser.extract_sort_params(text)
+            field     = params["field"]
+            direction = params["direction"]
+
+            # Sort a copy — context.results is NEVER mutated
+            def _sort_key(r: dict) -> float:
+                if field == "score":
+                    return r.get("total_score", 0.0)
+                return r.get("metrics", {}).get(field, 0.0)
+
+            sorted_results = sorted(
+                self.context.results, key=_sort_key, reverse=(direction == "desc")
+            )
+            return self.generator.format_sorted_table(
+                sorted_results,
+                sort_field=field,
+                direction=direction,
+                budget=self.context.budget,
+            )
+
+        if intent == Intent.SCREEN_POSITION:
+            params   = self.parser.extract_position_params(text)
+            exchange = params["exchange"] or self.context.exchange
+            if exchange is None:
+                return (
+                    "Which exchange? E.g. '2nd best NSE by cagr' or 'worst BSE by score'.\n"
+                    "Or select an exchange first by typing NSE or BSE."
+                )
+            horizon_years = HORIZON_YEARS.get(
+                self.context.investment_horizon, DEFAULT_HORIZON_YEARS
+            )
+            result = ScreenerEngine.fetch_position(
+                exchange=exchange.value,
+                metric=params["metric"],
+                position=params["position"],
+                from_end=params["from_end"],
+                horizon_years=horizon_years,
+                data_loader=self._loader,
+                risk_profile=self.context.risk_profile,
+                weights=self.context.weights if self.context.weights else None,
+                cache=self._cache,
+            )
+            return self.generator.format_position_result(
+                result,
+                position=params["position"],
+                from_end=params["from_end"],
+                metric=params["metric"],
+                exchange=exchange.value,
+                horizon_years=horizon_years,
+            )
+
         if intent == Intent.SCREEN_TOP:
             params   = self.parser.extract_screener_params(text)
             exchange = params["exchange"] or self.context.exchange
