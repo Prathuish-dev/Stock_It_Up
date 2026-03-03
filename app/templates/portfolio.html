@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio Analysis | Stock It Up{% endblock %}
+{% block page_title %}Portfolio Analysis{% endblock %}
+
+{% block content %}
+<section class="rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5">
+    <h3 class="text-lg font-semibold text-white">Portfolio Optimizer</h3>
+    <p class="mt-1 text-sm text-slate-300">Analyze allocations, risk, and expected outcomes using your selected stocks.</p>
+
+    <form id="portfolio-form" class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <label class="field">
+            <span>Market</span>
+            <select id="portfolio-exchange" name="exchange" required>
+                {% for market in market_options %}
+                <option value="{{ market }}" {% if portfolio_defaults.exchange == market %}selected{% endif %}>{{ market }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field">
+            <span>Budget (INR)</span>
+            <input type="number" name="budget" min="1" value="{{ portfolio_defaults.budget }}" required>
+        </label>
+        <label class="field">
+            <span>Horizon (Years)</span>
+            <input type="number" name="horizon_years" min="1" max="10" value="{{ portfolio_defaults.horizon_years }}" required>
+        </label>
+        <label class="field">
+            <span>Method</span>
+            <select name="method" required>
+                {% for method in portfolio_methods %}
+                <option value="{{ method }}" {% if portfolio_defaults.method == method %}selected{% endif %}>{{ method }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field">
+            <span>Risk Profile</span>
+            <select name="risk_profile" required>
+                {% for rp in portfolio_risks %}
+                <option value="{{ rp }}" {% if portfolio_defaults.risk_profile == rp %}selected{% endif %}>{{ rp }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field md:col-span-2 xl:col-span-3">
+            <span>Tickers (space or comma separated)</span>
+            <input type="hidden" name="tickers" id="portfolio-tickers-hidden" value="{{ portfolio_defaults.tickers }}">
+            <div class="ticker-picker">
+                <div id="portfolio-ticker-selected" class="ticker-selected"></div>
+                <input id="portfolio-ticker-search" type="text" placeholder="Search and press Enter (e.g. TCS, INFY)" autocomplete="off">
+                <div id="portfolio-ticker-suggestions" class="ticker-suggestions hidden"></div>
+            </div>
+        </label>
+        <div class="md:col-span-2 xl:col-span-3">
+            <button id="portfolio-run-btn" type="submit" class="btn-primary">
+                <span class="btn-label">Analyze Portfolio</span>
+                <span class="spinner hidden" aria-hidden="true"></span>
+            </button>
+        </div>
+    </form>
+</section>
+
+<div id="portfolio-error" class="alert alert-error mt-4 hidden"></div>
+<div id="portfolio-warning" class="alert alert-warning mt-4 hidden"></div>
+
+<section id="portfolio-summary" class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4 hidden">
+    <article class="metric-card"><p class="metric-label">Portfolio Return</p><p id="sum-return" class="metric-value">0%</p></article>
+    <article class="metric-card"><p class="metric-label">Portfolio Volatility</p><p id="sum-vol" class="metric-value">0%</p></article>
+    <article class="metric-card"><p class="metric-label">Portfolio Sharpe</p><p id="sum-sharpe" class="metric-value">0.00</p></article>
+    <article class="metric-card"><p class="metric-label">Loss Probability</p><p id="sum-loss" class="metric-value">0%</p></article>
+</section>
+
+<section id="portfolio-results" class="mt-6 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 hidden">
+    <h3 class="text-lg font-semibold text-white">Allocation Table</h3>
+    <div class="overflow-x-auto rounded-xl border border-slate-700/60 mt-4">
+        <table class="min-w-full text-sm">
+            <thead class="bg-slate-800/80 text-left text-xs uppercase tracking-wider text-slate-300">
+                <tr>
+                    <th class="px-3 py-3">Ticker</th>
+                    <th class="px-3 py-3">Allocation</th>
+                    <th class="px-3 py-3">Capital</th>
+                    <th class="px-3 py-3">Score</th>
+                    <th class="px-3 py-3">CAGR</th>
+                    <th class="px-3 py-3">Volatility</th>
+                    <th class="px-3 py-3">Sharpe</th>
+                    <th class="px-3 py-3">Risk Share</th>
+                </tr>
+            </thead>
+            <tbody id="portfolio-body"></tbody>
+        </table>
+    </div>
+</section>
+
+<section id="portfolio-charts" class="mt-6 grid gap-4 xl:grid-cols-3 hidden">
+    <article class="chart-card">
+        <h4 class="chart-title">Allocation Pie</h4>
+        <canvas id="portfolioAllocationChart"></canvas>
+    </article>
+    <article class="chart-card">
+        <h4 class="chart-title">Capital Distribution</h4>
+        <canvas id="portfolioCapitalChart"></canvas>
+    </article>
+    <article class="chart-card">
+        <h4 class="chart-title">Risk vs Return</h4>
+        <canvas id="portfolioScatterChart"></canvas>
+    </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', path='/js/ticker_picker.js') }}"></script>
+<script src="{{ url_for('static', path='/js/portfolio.js') }}"></script>
+{% endblock %}

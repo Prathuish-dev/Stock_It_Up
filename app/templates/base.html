@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Stock It Up{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/styles.css') }}">
+</head>
+<body class="app-bg min-h-screen text-slate-100">
+    <div class="min-h-screen lg:grid lg:grid-cols-[260px_1fr]">
+        <aside class="sidebar-panel border-b border-slate-700/50 lg:border-b-0 lg:border-r">
+            <div class="px-6 py-6">
+                <p class="text-xs uppercase tracking-[0.2em] text-amber-300">Stock It Up</p>
+                <h1 class="mt-2 text-2xl font-semibold text-white">Financial Console</h1>
+            </div>
+            <nav class="px-3 pb-5">
+                <a href="/dashboard" class="nav-link {% if request.url.path == '/dashboard' %}nav-link-active{% endif %}">Dashboard</a>
+                <a href="/ranking" class="nav-link {% if request.url.path == '/ranking' %}nav-link-active{% endif %}">Ranking</a>
+                <a href="/portfolio" class="nav-link {% if request.url.path == '/portfolio' %}nav-link-active{% endif %}">Portfolio Analysis</a>
+                <a href="/risk" class="nav-link {% if request.url.path == '/risk' %}nav-link-active{% endif %}">Risk Analytics</a>
+            </nav>
+        </aside>
+
+        <section class="main-surface min-h-screen">
+            <header class="border-b border-slate-700/50 px-6 py-5">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs uppercase tracking-[0.2em] text-cyan-300">Analytics Workspace</p>
+                        <h2 class="text-xl font-semibold text-white">{% block page_title %}Overview{% endblock %}</h2>
+                    </div>
+                    <div class="rounded-full border border-slate-600 px-4 py-2 text-xs text-slate-300">Live Demo Mode</div>
+                </div>
+            </header>
+
+            <main class="px-6 py-6">
+                {% block content %}{% endblock %}
+            </main>
+        </section>
+    </div>
+    <script src="{{ url_for('static', path='/js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

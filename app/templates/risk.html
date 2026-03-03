@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Risk Analytics | Stock It Up{% endblock %}
+{% block page_title %}Risk Analytics{% endblock %}
+
+{% block content %}
+<section class="rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5">
+    <h3 class="text-lg font-semibold text-white">VaR / CVaR & Monte Carlo</h3>
+    <p class="mt-1 text-sm text-slate-300">Run downside-risk simulations and inspect return distribution and risk concentration.</p>
+
+    <form id="risk-form" class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <label class="field">
+            <span>Market</span>
+            <select id="risk-exchange" name="exchange" required>
+                {% for market in market_options %}
+                <option value="{{ market }}" {% if risk_defaults.exchange == market %}selected{% endif %}>{{ market }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field">
+            <span>Method</span>
+            <select name="method" required>
+                {% for method in risk_methods %}
+                <option value="{{ method }}" {% if risk_defaults.method == method %}selected{% endif %}>{{ method }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field">
+            <span>Risk Profile</span>
+            <select name="risk_profile" required>
+                {% for rp in risk_profiles %}
+                <option value="{{ rp }}" {% if risk_defaults.risk_profile == rp %}selected{% endif %}>{{ rp }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field">
+            <span>Horizon (Years)</span>
+            <input type="number" name="horizon_years" min="1" max="10" value="{{ risk_defaults.horizon_years }}" required>
+        </label>
+        <label class="field">
+            <span>Simulations</span>
+            <input type="number" name="num_simulations" min="500" max="10000" step="100" value="{{ risk_defaults.num_simulations }}" required>
+        </label>
+        <label class="field md:col-span-2 xl:col-span-3">
+            <span>Tickers</span>
+            <input type="hidden" name="tickers" id="risk-tickers-hidden" value="{{ risk_defaults.tickers }}">
+            <div class="ticker-picker">
+                <div id="risk-ticker-selected" class="ticker-selected"></div>
+                <input id="risk-ticker-search" type="text" placeholder="Search and press Enter (e.g. TCS, INFY)" autocomplete="off">
+                <div id="risk-ticker-suggestions" class="ticker-suggestions hidden"></div>
+            </div>
+        </label>
+        <div class="md:col-span-2 xl:col-span-3">
+            <button id="risk-run-btn" type="submit" class="btn-primary">
+                <span class="btn-label">Run Risk Analytics</span>
+                <span class="spinner hidden" aria-hidden="true"></span>
+            </button>
+        </div>
+    </form>
+</section>
+
+<div id="risk-error" class="alert alert-error mt-4 hidden"></div>
+<div id="risk-warning" class="alert alert-warning mt-4 hidden"></div>
+
+<section id="risk-summary" class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5 hidden">
+    <article class="metric-card"><p class="metric-label">VaR 95%</p><p id="risk-var" class="metric-value">0%</p></article>
+    <article class="metric-card"><p class="metric-label">CVaR 95%</p><p id="risk-cvar" class="metric-value">0%</p></article>
+    <article class="metric-card"><p class="metric-label">Std Dev</p><p id="risk-std" class="metric-value">0%</p></article>
+    <article class="metric-card"><p class="metric-label">Mean Return</p><p id="risk-mean" class="metric-value">0%</p></article>
+    <article class="metric-card"><p class="metric-label">Loss Probability</p><p id="risk-loss" class="metric-value">0%</p></article>
+</section>
+
+<section id="risk-table-section" class="mt-6 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 hidden">
+    <h3 class="text-lg font-semibold text-white">Risk Decomposition</h3>
+    <div class="overflow-x-auto rounded-xl border border-slate-700/60 mt-4">
+        <table class="min-w-full text-sm">
+            <thead class="bg-slate-800/80 text-left text-xs uppercase tracking-wider text-slate-300">
+                <tr>
+                    <th class="px-3 py-3">Ticker</th>
+                    <th class="px-3 py-3">Allocation</th>
+                    <th class="px-3 py-3">Risk Share</th>
+                    <th class="px-3 py-3">CAGR</th>
+                    <th class="px-3 py-3">Volatility</th>
+                    <th class="px-3 py-3">Sharpe</th>
+                </tr>
+            </thead>
+            <tbody id="risk-body"></tbody>
+        </table>
+    </div>
+</section>
+
+<section id="risk-charts" class="mt-6 grid gap-4 xl:grid-cols-3 hidden">
+    <article class="chart-card xl:col-span-2">
+        <h4 class="chart-title">Monte Carlo Return Distribution</h4>
+        <canvas id="riskHistogramChart"></canvas>
+    </article>
+    <article class="chart-card">
+        <h4 class="chart-title">Risk Share by Asset</h4>
+        <canvas id="riskContributionChart"></canvas>
+    </article>
+    <article class="chart-card xl:col-span-3">
+        <h4 class="chart-title">Risk vs Return (Assets + Portfolio)</h4>
+        <canvas id="riskScatterChart"></canvas>
+    </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', path='/js/ticker_picker.js') }}"></script>
+<script src="{{ url_for('static', path='/js/risk.js') }}"></script>
+{% endblock %}

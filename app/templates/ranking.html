@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Ranking | Stock It Up{% endblock %}
+{% block page_title %}Ranking{% endblock %}
+
+{% block content %}
+<section class="rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5">
+    <h3 class="text-lg font-semibold text-white">Ranking Query</h3>
+    <p class="mt-1 text-sm text-slate-300">Structured inputs only. No free-text parsing required.</p>
+
+    <form id="ranking-form" class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5" method="post" action="/ranking">
+        <label class="field">
+            <span>Market</span>
+            <select name="exchange" required>
+                {% for market in market_options %}
+                <option value="{{ market }}" {% if selected.exchange == market %}selected{% endif %}>{{ market }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field">
+            <span>Metric</span>
+            <select name="metric" required>
+                {% for option in metric_options %}
+                <option value="{{ option }}" {% if selected.metric == option %}selected{% endif %}>
+                    {{ metric_registry[option].display if metric_registry[option] else option }}
+                </option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field">
+            <span>Order</span>
+            <select name="order" required>
+                {% for option in order_options %}
+                <option value="{{ option }}" {% if selected.order == option %}selected{% endif %}>{{ option|title }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="field">
+            <span>N</span>
+            <input type="number" name="limit" min="1" max="200" value="{{ selected.limit }}" required>
+        </label>
+        <label class="field">
+            <span>Horizon (Years)</span>
+            <input type="number" name="horizon_years" min="1" max="10" value="{{ selected.horizon_years }}" required>
+        </label>
+        <div class="md:col-span-2 xl:col-span-5">
+            <button id="run-ranking-btn" type="submit" class="btn-primary">
+                <span class="btn-label">Run Ranking</span>
+                <span class="spinner hidden" aria-hidden="true"></span>
+            </button>
+        </div>
+    </form>
+</section>
+
+<div id="ranking-error" class="alert alert-error mt-4 {% if not error %}hidden{% endif %}">{{ error or "" }}</div>
+<div id="ranking-warning" class="alert alert-warning mt-4 {% if not warning %}hidden{% endif %}">{{ warning or "" }}</div>
+
+<section id="ranking-results-section" class="mt-6 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 {% if not results %}hidden{% endif %}">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h3 class="text-lg font-semibold text-white">Results</h3>
+        <p id="results-summary" class="text-sm text-slate-300">
+            Showing page {{ pagination.page }} of {{ pagination.total_pages }} ({{ pagination.total_results }} results)
+        </p>
+    </div>
+
+    <div class="overflow-x-auto rounded-xl border border-slate-700/60">
+        <table class="min-w-full text-sm">
+            <thead class="bg-slate-800/80 text-left text-xs uppercase tracking-wider text-slate-300">
+                <tr>
+                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="rank">Rank <span class="sort-indicator"></span></button></th>
+                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="ticker">Ticker <span class="sort-indicator"></span></button></th>
+                    <th id="metric-column-header" class="px-3 py-3">
+                        <button type="button" class="table-sort-btn" data-sort-key="metric">
+                            <span id="metric-column-label">{{ metric_registry[selected.metric].display if metric_registry[selected.metric] else selected.metric }}</span>
+                            <span class="sort-indicator"></span>
+                        </button>
+                    </th>
+                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="cagr">CAGR <span class="sort-indicator"></span></button></th>
+                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="volatility">Volatility <span class="sort-indicator"></span></button></th>
+                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="sharpe">Sharpe <span class="sort-indicator"></span></button></th>
+                </tr>
+            </thead>
+            <tbody id="ranking-results-body">
+                {% for row in results %}
+                <tr
+                    class="border-t border-slate-700/60 {% if loop.first and selected.order == 'best' %}row-best{% elif loop.first and selected.order == 'worst' %}row-worst{% endif %}"
+                    data-rank="{{ row.rank }}"
+                    data-rank-label="{{ row.rank_label }}"
+                    data-ticker="{{ row.ticker }}"
+                    data-metric-value="{{ row.metric_value }}"
+                    data-display-value="{{ row.display_value }}"
+                    data-cagr="{{ row.cagr or 0 }}"
+                    data-volatility="{{ row.volatility or 0 }}"
+                    data-sharpe="{{ row.sharpe or 0 }}"
+                >
+                    <td class="px-3 py-3">{{ row.rank_label }}</td>
+                    <td class="px-3 py-3 font-semibold text-white">{{ row.ticker }}</td>
+                    <td class="px-3 py-3">{{ row.display_value }}</td>
+                    <td class="px-3 py-3">{{ "%.2f"|format((row.cagr or 0) * 100) }}%</td>
+                    <td class="px-3 py-3">{{ "%.2f"|format((row.volatility or 0) * 100) }}%</td>
+                    <td class="px-3 py-3">{{ "%.2f"|format((row.sharpe or 0)) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <nav
+        id="ranking-pagination"
+        class="mt-4 flex flex-wrap gap-2"
+        data-exchange="{{ selected.exchange }}"
+        data-metric="{{ selected.metric }}"
+        data-order="{{ selected.order }}"
+        data-limit="{{ selected.limit }}"
+        data-horizon-years="{{ selected.horizon_years }}"
+    >
+        {% if pagination.total_pages > 1 %}
+            {% for p in range(1, pagination.total_pages + 1) %}
+            <a
+                class="page-link {% if p == pagination.page %}page-link-active{% endif %}"
+                href="/ranking?exchange={{ selected.exchange }}&metric={{ selected.metric }}&order={{ selected.order }}&limit={{ selected.limit }}&horizon_years={{ selected.horizon_years }}&page={{ p }}"
+            >
+                {{ p }}
+            </a>
+            {% endfor %}
+        {% endif %}
+    </nav>
+</section>
+
+<section id="ranking-charts-section" class="mt-6 grid gap-4 xl:grid-cols-3 {% if not results %}hidden{% endif %}">
+    <article class="chart-card xl:col-span-2">
+        <h4 class="chart-title">Risk vs Return (Scatter)</h4>
+        <canvas id="riskReturnChart"></canvas>
+    </article>
+    <article class="chart-card">
+        <h4 class="chart-title">Portfolio Allocation Proxy (Pie)</h4>
+        <canvas id="allocationPieChart"></canvas>
+    </article>
+    <article class="chart-card xl:col-span-3">
+        <h4 class="chart-title">CAGR Comparison (Bar)</h4>
+        <canvas id="cagrBarChart"></canvas>
+    </article>
+</section>
+
+<script id="ranking-chart-data" type="application/json">{{ chart_data_json|safe }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', path='/js/charts.js') }}"></script>
+{% endblock %}

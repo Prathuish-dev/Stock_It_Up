@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Stock It Up{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <article class="metric-card">
+        <p class="metric-label">NSE Universe</p>
+        <p class="metric-value">{{ nse_count }}</p>
+        <p class="metric-sub">Tickers available</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">BSE Universe</p>
+        <p class="metric-value">{{ bse_count }}</p>
+        <p class="metric-sub">Tickers available</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Supported Metrics</p>
+        <p class="metric-value">{{ metric_options|length }}</p>
+        <p class="metric-sub">Ranking dimensions</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Mode</p>
+        <p class="metric-value">Web UI</p>
+        <p class="metric-sub">Chat + ranking</p>
+    </article>
+</section>
+
+<section class="mt-6 grid gap-6 xl:grid-cols-[1.1fr_1.9fr]">
+    <article class="rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5">
+        <h3 class="text-lg font-semibold text-white">What You Can Do Now</h3>
+        <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-300">
+            <li>Use Ranking with structured inputs: market, metric, order, and N.</li>
+            <li>Render top picks as a table with clear best/worst highlights.</li>
+            <li>Visualize results using risk-return scatter, CAGR bars, and pie allocation.</li>
+            <li>Run the CLI-like assistant directly in this dashboard.</li>
+        </ul>
+    </article>
+
+    <article class="chat-shell">
+        <div class="chat-head">
+            <div>
+                <p class="text-xs uppercase tracking-[0.18em] text-cyan-300">Assistant</p>
+                <h3 class="text-lg font-semibold text-white">Stock It Up ChatBot</h3>
+            </div>
+            <button id="chat-reset-btn" type="button" class="chat-reset-btn">Reset</button>
+        </div>
+        <div id="chat-log" class="chat-log" aria-live="polite"></div>
+        <form id="chat-form" class="chat-form">
+            <input id="chat-input" type="text" placeholder="Type message (e.g. NSE, top 10 NSE by cagr)" autocomplete="off" required>
+            <button id="chat-send-btn" type="submit" class="chat-send-btn">Send</button>
+        </form>
+    </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/dashboard_chat.js') }}"></script>
+{% endblock %}
+
