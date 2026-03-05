@@ -1,0 +1,2 @@
+"""Django JSON API app."""
+

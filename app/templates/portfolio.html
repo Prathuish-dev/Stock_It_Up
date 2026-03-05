@@ -69,6 +69,38 @@
     <article class="metric-card"><p class="metric-label">Loss Probability</p><p id="sum-loss" class="metric-value">0%</p></article>
 </section>
 
+<section id="portfolio-explanation" class="mt-6 rounded-2xl border border-indigo-500/30 bg-indigo-900/10 p-5 hidden">
+    <div class="flex items-center gap-2 mb-4">
+        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+        <h3 class="text-lg font-semibold text-indigo-100">AI Interpretation</h3>
+    </div>
+    
+    <div class="space-y-4 text-sm text-slate-300">
+        <div>
+            <h4 class="font-medium text-indigo-300 uppercase tracking-wider text-xs mb-1">Executive Summary</h4>
+            <p id="expl-summary" class="leading-relaxed"></p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="rounded-lg bg-slate-800/50 p-3">
+                <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Strategy Rationale</h4>
+                <p id="expl-rationale" class="leading-relaxed"></p>
+            </div>
+            <div class="rounded-lg bg-slate-800/50 p-3">
+                <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Risk Distribution</h4>
+                <p id="expl-risk-dist" class="leading-relaxed"></p>
+            </div>
+            <div class="rounded-lg bg-slate-800/50 p-3 md:col-span-2">
+                <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Portfolio Risk</h4>
+                <pre id="expl-portfolio-risk" class="whitespace-pre-wrap font-mono text-xs text-slate-300 leading-relaxed"></pre>
+            </div>
+        </div>
+        <div class="pt-2 border-t border-indigo-500/20">
+            <h4 class="font-medium text-indigo-300 uppercase tracking-wider text-xs mb-1">Final Verdict</h4>
+            <p id="expl-final" class="leading-relaxed text-indigo-50 font-medium"></p>
+        </div>
+    </div>
+</section>
+
 <section id="portfolio-results" class="mt-6 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 hidden">
     <h3 class="text-lg font-semibold text-white">Allocation Table</h3>
     <div class="overflow-x-auto rounded-xl border border-slate-700/60 mt-4">

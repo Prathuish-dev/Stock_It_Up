@@ -3,7 +3,12 @@ from __future__ import annotations
 import logging
 import time
 
-from fastapi import HTTPException
+
+class HTTPException(Exception):
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
 
 from app.api.schemas.portfolio import (
     PortfolioAllocationItem,
@@ -15,6 +20,7 @@ from chatbot.constants import DEFAULT_SCREENER_WEIGHTS
 from chatbot.data_loader import DataLoader
 from chatbot.metrics_engine import MetricsEngine, ScoringEngine
 from chatbot.portfolio_engine import PortfolioEngine
+from chatbot.allocation_explanation_engine import AllocationExplanationEngine
 
 logger = logging.getLogger("stock_it_up.portfolio")
 
@@ -96,6 +102,7 @@ class PortfolioService:
         method: str,
         risk_profile: str,
         horizon_years: int,
+        include_explanation: bool = True,
     ) -> PortfolioResponse:
         started = time.perf_counter()
         exchange = exchange.upper()
@@ -135,6 +142,12 @@ class PortfolioService:
                 metrics_dict[ticker] = MetricsEngine.compute_all(df)
             except Exception:
                 missing.append(ticker)
+
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid/unsupported ticker(s) for {exchange}: {', '.join(missing)}",
+            )
 
         if len(metrics_dict) < 2:
             raise HTTPException(
@@ -224,6 +237,18 @@ class PortfolioService:
             probability_of_loss=float(monte.get("probability_of_loss", 0.0)),
         )
 
+        explanation_data = None
+        if include_explanation:
+            try:
+                raw_exp = AllocationExplanationEngine.explain(
+                    merged, method=method, risk_profile=risk_profile
+                )
+                raw_exp["monte_carlo"] = AllocationExplanationEngine._monte_carlo_section(monte)
+                from app.api.schemas.portfolio import ExplanationSchema
+                explanation_data = ExplanationSchema(**raw_exp)
+            except Exception as e:
+                logger.warning("Explanation generation failed: %s", e)
+
         execution_ms = round((time.perf_counter() - started) * 1000, 2)
         logger.info(
             "portfolio.response exchange=%s valid_tickers=%s missing=%s execution_ms=%s",
@@ -234,8 +259,6 @@ class PortfolioService:
         )
 
         warning = None
-        if missing:
-            warning = f"Skipped {len(missing)} ticker(s) due to missing/insufficient data: {', '.join(missing)}"
 
         return PortfolioResponse(
             ok=True,
@@ -250,6 +273,7 @@ class PortfolioService:
             allocations=typed_allocations,
             summary=typed_summary,
             chart_data=self._chart_data(typed_allocations),
+            explanation=explanation_data,
             execution_ms=execution_ms,
         )
 

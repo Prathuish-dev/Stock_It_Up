@@ -2,12 +2,6 @@ from __future__ import annotations
 
 from chatbot.conversation_manager import ConversationManager
 
-try:
-    from app.main import app
-except Exception:  # pragma: no cover - web stack may be unavailable in CLI-only env
-    app = None
-
-
 def run_cli() -> None:
     manager = ConversationManager()
 
@@ -30,4 +24,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -100,6 +100,20 @@ Critical constraint: `context.results` must **never be mutated**. Sort always pr
 
 The `format_sorted_table` output deliberately shows *both* the alternative-sort leader and the original score winner simultaneously — so the user never loses track of the overall best pick while exploring a different dimension.
 
+### Phase 10 — Web Application & AI Interpretations
+
+The command-line interface was rigorous, but financial data needs visual hierarchy. We built a Django-based Web Application bridging the backend Python engines to a NextJS-style frontend.
+
+**1. Connecting the Explanation Engine to APIs**
+The `AllocationExplanationEngine` generates rich, multi-paragraph analysis on capital allocation and Monte Carlo risk boundaries. We created `ExplanationSchema` in Pydantic to strictly serialize this output structure (Summary, Rationale, Risk Distribution, Final Verdict) through the Django JSON endpoints.
+
+**2. Fail-Safe Service Integration**
+What if the AI explanation parsing fails on an edge case? The analysis data shouldn't be lost.
+In `PortfolioService` and `RiskService`, the engine callback is isolated inside a `try/except` block. If `AllocationExplanationEngine.explain()` throws an exception, the error is swallowed and logged, and `explanation=None` is returned natively in the API. The UI then elegantly skips rendering the Explanation Card while seamlessly displaying the underlying Chart.js visualizations.
+
+**3. Frontend User Experience (Ticker Picker)**
+The `ticker_picker.js` was enhanced to provide immediate, context-aware feedback. Now, when a user clicks into the Ticker search box, it triggers a `fetchSuggestions` event *without* requiring them to type any characters. It automatically requests the top available tickers strictly filtered by the currently chosen Exchange (NSE vs BSE), dramatically improving discoverability of supported stocks.
+
 ---
 
 ## Alternative Approaches Considered

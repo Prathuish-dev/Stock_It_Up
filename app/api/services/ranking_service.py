@@ -4,7 +4,12 @@ import logging
 import math
 import time
 
-from fastapi import HTTPException
+
+class HTTPException(Exception):
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
 
 from app.api.schemas.ranking import (
     BarChartData,
@@ -220,4 +225,3 @@ class RankingService:
 
 
 ranking_service = RankingService()
-

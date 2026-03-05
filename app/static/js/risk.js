@@ -10,6 +10,7 @@
     const summarySection = document.getElementById("risk-summary");
     const tableSection = document.getElementById("risk-table-section");
     const chartsSection = document.getElementById("risk-charts");
+    const explanationSection = document.getElementById("risk-explanation");
     const body = document.getElementById("risk-body");
 
     const riskVar = document.getElementById("risk-var");
@@ -22,13 +23,13 @@
     const tickerPicker =
         typeof window.createTickerPicker === "function"
             ? window.createTickerPicker({
-                  exchangeSelectId: "risk-exchange",
-                  hiddenInputId: "risk-tickers-hidden",
-                  searchInputId: "risk-ticker-search",
-                  selectedContainerId: "risk-ticker-selected",
-                  suggestionsContainerId: "risk-ticker-suggestions",
-                  maxItems: 25,
-              })
+                exchangeSelectId: "risk-exchange",
+                hiddenInputId: "risk-tickers-hidden",
+                searchInputId: "risk-ticker-search",
+                selectedContainerId: "risk-ticker-selected",
+                suggestionsContainerId: "risk-ticker-suggestions",
+                maxItems: 25,
+            })
             : null;
 
     function setLoading(isLoading) {
@@ -165,6 +166,17 @@
                 <td class="px-3 py-3">${Number(a.sharpe).toFixed(2)}</td>
             </tr>
         `).join("");
+
+        if (payload.explanation && explanationSection) {
+            document.getElementById("expl-summary").textContent = payload.explanation.summary;
+            document.getElementById("expl-risk-dist").textContent = payload.explanation.risk_distribution;
+            document.getElementById("expl-monte-carlo").textContent = payload.explanation.monte_carlo;
+            document.getElementById("expl-risk-decomp").textContent = payload.explanation.risk_decomposition;
+            document.getElementById("expl-final").textContent = payload.explanation.final_statement;
+            explanationSection.classList.remove("hidden");
+        } else if (explanationSection) {
+            explanationSection.classList.add("hidden");
+        }
 
         summarySection.classList.remove("hidden");
         tableSection.classList.remove("hidden");

@@ -10,6 +10,19 @@ class RiskRequest(BaseModel):
     risk_profile: str = "MEDIUM"
     horizon_years: int = 3
     num_simulations: int = 3000
+    include_explanation: bool = True
+
+
+class ExplanationSchema(BaseModel):
+    summary: str
+    allocation_table: str
+    strategy_rationale: str
+    risk_distribution: str
+    risk_decomposition: str
+    capital_distribution: str
+    portfolio_risk: str
+    monte_carlo: str | None = None
+    final_statement: str
 
 
 class RiskAllocationItem(BaseModel):
@@ -55,5 +68,6 @@ class RiskResponse(BaseModel):
     allocations: list[RiskAllocationItem] = Field(default_factory=list)
     summary: RiskSummary
     chart_data: RiskChartData
+    explanation: ExplanationSchema | None = None
     execution_ms: float
 

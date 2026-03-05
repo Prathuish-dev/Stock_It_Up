@@ -10,6 +10,19 @@ class PortfolioRequest(BaseModel):
     method: str = "proportional"
     risk_profile: str = "MEDIUM"
     horizon_years: int = 3
+    include_explanation: bool = True
+
+
+class ExplanationSchema(BaseModel):
+    summary: str
+    allocation_table: str
+    strategy_rationale: str
+    risk_distribution: str
+    risk_decomposition: str
+    capital_distribution: str
+    portfolio_risk: str
+    monte_carlo: str | None = None
+    final_statement: str
 
 
 class PortfolioAllocationItem(BaseModel):
@@ -55,5 +68,6 @@ class PortfolioResponse(BaseModel):
     allocations: list[PortfolioAllocationItem] = Field(default_factory=list)
     summary: PortfolioSummary
     chart_data: PortfolioChartData
+    explanation: ExplanationSchema | None = None
     execution_ms: float
 

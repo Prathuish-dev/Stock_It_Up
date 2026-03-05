@@ -15,10 +15,10 @@
                 <h1 class="mt-2 text-2xl font-semibold text-white">Financial Console</h1>
             </div>
             <nav class="px-3 pb-5">
-                <a href="/dashboard" class="nav-link {% if request.url.path == '/dashboard' %}nav-link-active{% endif %}">Dashboard</a>
-                <a href="/ranking" class="nav-link {% if request.url.path == '/ranking' %}nav-link-active{% endif %}">Ranking</a>
-                <a href="/portfolio" class="nav-link {% if request.url.path == '/portfolio' %}nav-link-active{% endif %}">Portfolio Analysis</a>
-                <a href="/risk" class="nav-link {% if request.url.path == '/risk' %}nav-link-active{% endif %}">Risk Analytics</a>
+                <a href="/dashboard" class="nav-link {% if request.path == '/dashboard' %}nav-link-active{% endif %}">Dashboard</a>
+                <a href="/ranking" class="nav-link {% if request.path == '/ranking' %}nav-link-active{% endif %}">Ranking</a>
+                <a href="/portfolio" class="nav-link {% if request.path == '/portfolio' %}nav-link-active{% endif %}">Portfolio Analysis</a>
+                <a href="/risk" class="nav-link {% if request.path == '/risk' %}nav-link-active{% endif %}">Risk Analytics</a>
             </nav>
         </aside>
 

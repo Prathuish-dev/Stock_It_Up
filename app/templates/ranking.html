@@ -54,6 +54,10 @@
 
 <div id="ranking-error" class="alert alert-error mt-4 {% if not error %}hidden{% endif %}">{{ error or "" }}</div>
 <div id="ranking-warning" class="alert alert-warning mt-4 {% if not warning %}hidden{% endif %}">{{ warning or "" }}</div>
+<div id="ranking-loading" class="ranking-loading hidden mt-4">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading ranking data...</span>
+</div>
 
 <section id="ranking-results-section" class="mt-6 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 {% if not results %}hidden{% endif %}">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">

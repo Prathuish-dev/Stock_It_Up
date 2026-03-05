@@ -10,6 +10,7 @@
     const summarySection = document.getElementById("portfolio-summary");
     const resultsSection = document.getElementById("portfolio-results");
     const chartsSection = document.getElementById("portfolio-charts");
+    const explanationSection = document.getElementById("portfolio-explanation");
     const body = document.getElementById("portfolio-body");
 
     const sumReturn = document.getElementById("sum-return");
@@ -21,13 +22,13 @@
     const tickerPicker =
         typeof window.createTickerPicker === "function"
             ? window.createTickerPicker({
-                  exchangeSelectId: "portfolio-exchange",
-                  hiddenInputId: "portfolio-tickers-hidden",
-                  searchInputId: "portfolio-ticker-search",
-                  selectedContainerId: "portfolio-ticker-selected",
-                  suggestionsContainerId: "portfolio-ticker-suggestions",
-                  maxItems: 20,
-              })
+                exchangeSelectId: "portfolio-exchange",
+                hiddenInputId: "portfolio-tickers-hidden",
+                searchInputId: "portfolio-ticker-search",
+                selectedContainerId: "portfolio-ticker-selected",
+                suggestionsContainerId: "portfolio-ticker-suggestions",
+                maxItems: 20,
+            })
             : null;
 
     function setLoading(isLoading) {
@@ -144,6 +145,17 @@
                 <td class="px-3 py-3">${(a.risk_share * 100).toFixed(2)}%</td>
             </tr>
         `).join("");
+
+        if (payload.explanation && explanationSection) {
+            document.getElementById("expl-summary").textContent = payload.explanation.summary;
+            document.getElementById("expl-rationale").textContent = payload.explanation.strategy_rationale;
+            document.getElementById("expl-risk-dist").textContent = payload.explanation.risk_distribution;
+            document.getElementById("expl-portfolio-risk").textContent = payload.explanation.portfolio_risk;
+            document.getElementById("expl-final").textContent = payload.explanation.final_statement;
+            explanationSection.classList.remove("hidden");
+        } else if (explanationSection) {
+            explanationSection.classList.add("hidden");
+        }
 
         summarySection.classList.remove("hidden");
         resultsSection.classList.remove("hidden");

@@ -1,0 +1,2 @@
+"""Django web pages app."""
+

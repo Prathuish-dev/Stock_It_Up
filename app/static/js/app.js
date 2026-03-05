@@ -10,6 +10,7 @@
 
     const errorBox = document.getElementById("ranking-error");
     const warningBox = document.getElementById("ranking-warning");
+    const loadingBox = document.getElementById("ranking-loading");
     const resultsSection = document.getElementById("ranking-results-section");
     const chartsSection = document.getElementById("ranking-charts-section");
     const resultsSummary = document.getElementById("results-summary");
@@ -38,6 +39,7 @@
         button.disabled = isLoading;
         if (label) label.textContent = isLoading ? "Processing..." : "Run Ranking";
         if (spinner) spinner.classList.toggle("hidden", !isLoading);
+        if (loadingBox) loadingBox.classList.toggle("hidden", !isLoading);
     }
 
     function formatPercent(value) {
@@ -183,6 +185,9 @@
         if (rows.length === 0) {
             if (resultsSection) resultsSection.classList.add("hidden");
             if (chartsSection) chartsSection.classList.add("hidden");
+            if (window.StockCharts && typeof window.StockCharts.renderRankingCharts === "function") {
+                window.StockCharts.renderRankingCharts({});
+            }
             return;
         }
 
@@ -260,7 +265,7 @@
                 window.history.replaceState({}, "", `/ranking?${query.toString()}`);
             }
         } catch (error) {
-            form.submit();
+            showBox(errorBox, "Unable to fetch ranking right now. Please retry.");
         } finally {
             setLoading(false);
         }
@@ -306,4 +311,18 @@
     }
     currentRows = getInitialRowsFromDom();
     updateSortIndicators();
+
+    if (currentRows.length === 0) {
+        const params = new URLSearchParams(window.location.search);
+        const defaults = new FormData(form);
+        for (const [key, value] of defaults.entries()) {
+            if (!params.has(key) && typeof value === "string" && value.length > 0) {
+                params.set(key, value);
+            }
+        }
+        if (!params.has("page")) {
+            params.set("page", "1");
+        }
+        fetchRanking(params, false);
+    }
 })();

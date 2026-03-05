@@ -64,7 +64,12 @@ PortfolioEngine               → allocation + risk decomposition + covariance +
 ExplanationEngine             → deterministic per-stock interpretation
 AllocationExplanationEngine   → portfolio-level explanation + Monte Carlo section
 ResponseGenerator             → formatting only — no computation
-```
+
+### Web Backend Architecture
+django_webapp                 → NextJS-style Django templates (Tailwind + Chart.js)
+django_api                    → HTTP JSON endpoints wrapping core Engines
+Services (e.g. RiskService)   → Stateful request orchestration, error isolation
+Schemas (e.g. RiskRequest)    → Strongly typed Pydantic API contracts
 
 Each layer has a **single responsibility**. No cross-layer logic leakage.
 
@@ -245,6 +250,19 @@ Key behaviour:
 
 ---
 
+## 9️⃣ Web Application + Explanations *(new)*
+
+The system now includes a full Django-powered Web Application (`127.0.0.1:8000`) alongside the CLI.
+
+### Features
+- **Interactive Dashboards**: Portfolio Optimizer and Risk Analytics pages with Chart.js visualizations (scatter plots, allocation pies, Monte Carlo histograms).
+- **AI Interpretations**: Deep integration of the `AllocationExplanationEngine`. The backend parses the mathematical outputs and generates structured, deterministic prose (Executive Summary, Strategy Rationale, Risk Distribution, Monte Carlo Results, Final Verdict) directly into dedicated UI cards.
+- **Fail-Safe APIs**: Explanation generation is strictly isolated. If the text engine fails, the numerical API still returns `200 OK` with the chart/table data intact.
+- **Strictly Typed Contracts**: All API endpoints use `Pydantic` schemas (e.g., `RiskResponse`, `ExplanationSchema`) to ensure the frontend receives guaranteed struct types.
+- **Market-Aware Ticker Picker**: The search bar instantly loads the top tickers specific to the selected Exchange (NSE vs BSE) on focus/click, reducing invalid configurations.
+
+---
+
 ## 9️⃣ Allocation Methods
 
 | Method | Logic |
@@ -389,7 +407,7 @@ pytest tests/test_metric_cache.py -v       # cache tests only
 - [ ] Stage 3 — Factor Models (CAPM / Fama-French)
 - [ ] Sector & market-cap awareness (`top IT stocks`)
 - [ ] Dynamic risk-free rate (RBI repo rate API)
-- [ ] Web / Streamlit interface
+- [x] Web / Dashboard interface (Django)
 - [ ] Benchmark comparison (vs Nifty 50 / Sensex)
 - [ ] Percentile-based thresholds for explanation engine
 - [ ] Context-aware sort — re-sort after screener list (not just analysis session)

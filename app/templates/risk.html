@@ -6,14 +6,16 @@
 {% block content %}
 <section class="rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5">
     <h3 class="text-lg font-semibold text-white">VaR / CVaR & Monte Carlo</h3>
-    <p class="mt-1 text-sm text-slate-300">Run downside-risk simulations and inspect return distribution and risk concentration.</p>
+    <p class="mt-1 text-sm text-slate-300">Run downside-risk simulations and inspect return distribution and risk
+        concentration.</p>
 
     <form id="risk-form" class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <label class="field">
             <span>Market</span>
             <select id="risk-exchange" name="exchange" required>
                 {% for market in market_options %}
-                <option value="{{ market }}" {% if risk_defaults.exchange == market %}selected{% endif %}>{{ market }}</option>
+                <option value="{{ market }}" {% if risk_defaults.exchange==market %}selected{% endif %}>{{ market }}
+                </option>
                 {% endfor %}
             </select>
         </label>
@@ -21,7 +23,8 @@
             <span>Method</span>
             <select name="method" required>
                 {% for method in risk_methods %}
-                <option value="{{ method }}" {% if risk_defaults.method == method %}selected{% endif %}>{{ method }}</option>
+                <option value="{{ method }}" {% if risk_defaults.method==method %}selected{% endif %}>{{ method }}
+                </option>
                 {% endfor %}
             </select>
         </label>
@@ -29,24 +32,27 @@
             <span>Risk Profile</span>
             <select name="risk_profile" required>
                 {% for rp in risk_profiles %}
-                <option value="{{ rp }}" {% if risk_defaults.risk_profile == rp %}selected{% endif %}>{{ rp }}</option>
+                <option value="{{ rp }}" {% if risk_defaults.risk_profile==rp %}selected{% endif %}>{{ rp }}</option>
                 {% endfor %}
             </select>
         </label>
         <label class="field">
             <span>Horizon (Years)</span>
-            <input type="number" name="horizon_years" min="1" max="10" value="{{ risk_defaults.horizon_years }}" required>
+            <input type="number" name="horizon_years" min="1" max="10" value="{{ risk_defaults.horizon_years }}"
+                required>
         </label>
         <label class="field">
             <span>Simulations</span>
-            <input type="number" name="num_simulations" min="500" max="10000" step="100" value="{{ risk_defaults.num_simulations }}" required>
+            <input type="number" name="num_simulations" min="500" max="10000" step="100"
+                value="{{ risk_defaults.num_simulations }}" required>
         </label>
         <label class="field md:col-span-2 xl:col-span-3">
             <span>Tickers</span>
             <input type="hidden" name="tickers" id="risk-tickers-hidden" value="{{ risk_defaults.tickers }}">
             <div class="ticker-picker">
                 <div id="risk-ticker-selected" class="ticker-selected"></div>
-                <input id="risk-ticker-search" type="text" placeholder="Search and press Enter (e.g. TCS, INFY)" autocomplete="off">
+                <input id="risk-ticker-search" type="text" placeholder="Search and press Enter (e.g. TCS, INFY)"
+                    autocomplete="off">
                 <div id="risk-ticker-suggestions" class="ticker-suggestions hidden"></div>
             </div>
         </label>
@@ -63,11 +69,64 @@
 <div id="risk-warning" class="alert alert-warning mt-4 hidden"></div>
 
 <section id="risk-summary" class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5 hidden">
-    <article class="metric-card"><p class="metric-label">VaR 95%</p><p id="risk-var" class="metric-value">0%</p></article>
-    <article class="metric-card"><p class="metric-label">CVaR 95%</p><p id="risk-cvar" class="metric-value">0%</p></article>
-    <article class="metric-card"><p class="metric-label">Std Dev</p><p id="risk-std" class="metric-value">0%</p></article>
-    <article class="metric-card"><p class="metric-label">Mean Return</p><p id="risk-mean" class="metric-value">0%</p></article>
-    <article class="metric-card"><p class="metric-label">Loss Probability</p><p id="risk-loss" class="metric-value">0%</p></article>
+    <article class="metric-card">
+        <p class="metric-label">VaR 95%</p>
+        <p id="risk-var" class="metric-value">0%</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">CVaR 95%</p>
+        <p id="risk-cvar" class="metric-value">0%</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Std Dev</p>
+        <p id="risk-std" class="metric-value">0%</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Mean Return</p>
+        <p id="risk-mean" class="metric-value">0%</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Loss Probability</p>
+        <p id="risk-loss" class="metric-value">0%</p>
+    </article>
+</section>
+
+<section id="risk-explanation" class="mt-6 rounded-2xl border border-rose-500/30 bg-rose-900/10 p-5 hidden">
+    <div class="flex items-center gap-2 mb-4">
+        <svg class="w-5 h-5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
+            </path>
+        </svg>
+        <h3 class="text-lg font-semibold text-rose-100">AI Risk Insights</h3>
+    </div>
+
+    <div class="space-y-4 text-sm text-slate-300">
+        <div>
+            <h4 class="font-medium text-rose-300 uppercase tracking-wider text-xs mb-1">Executive Summary</h4>
+            <p id="expl-summary" class="leading-relaxed"></p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="rounded-lg bg-slate-800/50 p-3">
+                <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Risk Distribution</h4>
+                <p id="expl-risk-dist" class="leading-relaxed"></p>
+            </div>
+            <div class="rounded-lg bg-slate-800/50 p-3">
+                <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Monte Carlo Analysis</h4>
+                <pre id="expl-monte-carlo"
+                    class="whitespace-pre-wrap font-mono text-xs text-slate-300 leading-relaxed"></pre>
+            </div>
+            <div class="rounded-lg bg-slate-800/50 p-3 md:col-span-2">
+                <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Risk Decomposition</h4>
+                <pre id="expl-risk-decomp"
+                    class="whitespace-pre-wrap font-mono text-xs text-slate-300 leading-relaxed"></pre>
+            </div>
+        </div>
+        <div class="pt-2 border-t border-rose-500/20">
+            <h4 class="font-medium text-rose-300 uppercase tracking-wider text-xs mb-1">Final Verdict</h4>
+            <p id="expl-final" class="leading-relaxed text-rose-50 font-medium"></p>
+        </div>
+    </div>
 </section>
 
 <section id="risk-table-section" class="mt-6 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 hidden">
