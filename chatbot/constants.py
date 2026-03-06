@@ -64,7 +64,7 @@ METRIC_REGISTRY: dict[str, dict] = {
         "scale":           1.0,
     },
     "score": {
-        "display":         "Score",
+        "display":         "Custom",
         "unit":            "",
         "higher_is_better": True,
         "scale":           1.0,

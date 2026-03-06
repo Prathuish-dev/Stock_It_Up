@@ -15,6 +15,7 @@ from app.api.schemas.ranking import (
     BarChartData,
     PieChartData,
     RankingChartData,
+    RankingExplanation,
     RankingItem,
     RankingPagination,
     RankingResponse,
@@ -25,6 +26,7 @@ from chatbot.constants import DEFAULT_HORIZON_YEARS, METRIC_REGISTRY
 from chatbot.data_loader import DataLoader
 from chatbot.metric_cache import MetricCache
 from chatbot.metrics_engine import MetricsEngine
+from chatbot.ranking_explanation_engine import RankingExplanationEngine
 from chatbot.screener_engine import ScreenerEngine
 
 logger = logging.getLogger("stock_it_up.ranking")
@@ -129,6 +131,7 @@ class RankingService:
         limit: int,
         page: int,
         horizon_years: int = DEFAULT_HORIZON_YEARS,
+        weights: dict[str, float] | None = None,
     ) -> RankingResponse:
         started = time.perf_counter()
         self.validate_inputs(exchange, metric, order)
@@ -144,13 +147,14 @@ class RankingService:
         cache_hit = self.cache.is_valid(exchange, safe_horizon)
 
         logger.info(
-            "ranking.query exchange=%s metric=%s order=%s limit=%s page=%s horizon_years=%s cache_hit=%s",
+            "ranking.query exchange=%s metric=%s order=%s limit=%s page=%s horizon_years=%s weights=%s cache_hit=%s",
             exchange,
             metric,
             order,
             safe_limit,
             safe_page,
             safe_horizon,
+            weights,
             cache_hit,
         )
 
@@ -162,6 +166,7 @@ class RankingService:
             direction=direction,
             data_loader=self.loader,
             cache=self.cache,
+            weights=weights,
         )
         raw_rows = self._enrich_metrics(exchange, safe_horizon, raw_rows)
 
@@ -200,6 +205,26 @@ class RankingService:
             execution_ms,
         )
 
+        # ---- Build explanation ----------------------------------------
+        explanation_data = None
+        try:
+            # Pass effective weights if available from first result
+            effective_weights = None
+            if metric == "score" and typed_rows:
+                effective_weights = getattr(typed_rows[0], "weights_used", None)
+
+            raw_exp = RankingExplanationEngine.explain(
+                [r.model_dump() for r in typed_rows],
+                metric=metric,
+                order=order,
+                exchange=exchange,
+                horizon_years=safe_horizon,
+                weights=effective_weights,
+            )
+            explanation_data = RankingExplanation(**raw_exp)
+        except Exception as e:
+            logger.warning("Ranking explanation generation failed: %s", e)
+
         return RankingResponse(
             ok=True,
             error=None if paginated_rows else "No data available for the selected filters.",
@@ -219,6 +244,7 @@ class RankingService:
                 total_results=total_results,
             ),
             chart_data=self._build_chart_payload(paginated_rows),
+            explanation=explanation_data,
             execution_ms=execution_ms,
             cache_hit=cache_hit,
         )

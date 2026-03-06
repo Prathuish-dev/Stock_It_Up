@@ -13,7 +13,7 @@
             <span>Market</span>
             <select name="exchange" required>
                 {% for market in market_options %}
-                <option value="{{ market }}" {% if selected.exchange == market %}selected{% endif %}>{{ market }}</option>
+                <option value="{{ market }}" {% if selected.exchange==market %}selected{% endif %}>{{ market }}</option>
                 {% endfor %}
             </select>
         </label>
@@ -21,7 +21,7 @@
             <span>Metric</span>
             <select name="metric" required>
                 {% for option in metric_options %}
-                <option value="{{ option }}" {% if selected.metric == option %}selected{% endif %}>
+                <option value="{{ option }}" {% if selected.metric==option %}selected{% endif %}>
                     {{ metric_registry[option].display if metric_registry[option] else option }}
                 </option>
                 {% endfor %}
@@ -31,7 +31,8 @@
             <span>Order</span>
             <select name="order" required>
                 {% for option in order_options %}
-                <option value="{{ option }}" {% if selected.order == option %}selected{% endif %}>{{ option|title }}</option>
+                <option value="{{ option }}" {% if selected.order==option %}selected{% endif %}>{{ option|title }}
+                </option>
                 {% endfor %}
             </select>
         </label>
@@ -43,6 +44,44 @@
             <span>Horizon (Years)</span>
             <input type="number" name="horizon_years" min="1" max="10" value="{{ selected.horizon_years }}" required>
         </label>
+
+        <div id="custom-weights-section"
+            class="md:col-span-2 xl:col-span-5 hidden rounded-xl border border-slate-700/60 bg-slate-800/50 p-4 mt-2">
+            <div class="mb-3 flex items-center justify-between">
+                <h4 class="text-sm font-semibold text-slate-200">Custom Weights</h4>
+                <p class="text-xs text-slate-400">Values are relative and will auto-normalize to sum to 100%.</p>
+            </div>
+            <div class="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+                <!-- Core Predefined -->
+                <label class="field">
+                    <span class="text-xs text-slate-300">Return (CAGR)</span>
+                    <input type="number" name="weight_return" min="0" max="10" step="0.01" value="0.34">
+                </label>
+                <label class="field">
+                    <span class="text-xs text-slate-300">Risk (Volatility)</span>
+                    <input type="number" name="weight_risk" min="0" max="10" step="0.01" value="0.33">
+                </label>
+                <label class="field">
+                    <span class="text-xs text-slate-300">Volume</span>
+                    <input type="number" name="weight_volume" min="0" max="10" step="0.01" value="0.33">
+                </label>
+
+                <!-- Additional Criteria in ScoringEngine -->
+                <label class="field">
+                    <span class="text-xs text-slate-300">Sharpe</span>
+                    <input type="number" name="weight_sharpe" min="0" max="10" step="0.01" value="0.0">
+                </label>
+                <label class="field">
+                    <span class="text-xs text-slate-300">Max Drawdown</span>
+                    <input type="number" name="weight_max_drawdown" min="0" max="10" step="0.01" value="0.0">
+                </label>
+                <label class="field">
+                    <span class="text-xs text-slate-300">Sortino</span>
+                    <input type="number" name="weight_sortino" min="0" max="10" step="0.01" value="0.0">
+                </label>
+            </div>
+        </div>
+
         <div class="md:col-span-2 xl:col-span-5">
             <button id="run-ranking-btn" type="submit" class="btn-primary">
                 <span class="btn-label">Run Ranking</span>
@@ -52,14 +91,45 @@
     </form>
 </section>
 
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const metricSelect = document.querySelector('select[name="metric"]');
+        const weightsSection = document.getElementById('custom-weights-section');
+
+        function updateWeightsVisibility() {
+            if (metricSelect && weightsSection) {
+                if (metricSelect.value === 'score') {
+                    weightsSection.classList.remove('hidden');
+                } else {
+                    weightsSection.classList.add('hidden');
+                }
+            }
+        }
+
+        if (metricSelect) {
+            metricSelect.addEventListener('change', updateWeightsVisibility);
+            updateWeightsVisibility(); // Initialize on load
+        }
+    });
+</script>
+
 <div id="ranking-error" class="alert alert-error mt-4 {% if not error %}hidden{% endif %}">{{ error or "" }}</div>
-<div id="ranking-warning" class="alert alert-warning mt-4 {% if not warning %}hidden{% endif %}">{{ warning or "" }}</div>
-<div id="ranking-loading" class="ranking-loading hidden mt-4">
-    <span class="spinner" aria-hidden="true"></span>
-    <span>Loading ranking data...</span>
+<div id="ranking-warning" class="alert alert-warning mt-4 {% if not warning %}hidden{% endif %}">{{ warning or "" }}
+</div>
+<div id="ranking-loading"
+    class="ranking-loading hidden mt-6 flex flex-col items-center justify-center p-8 border border-slate-700/60 bg-slate-800/50 rounded-xl">
+    <svg class="animate-spin h-10 w-10 text-cyan-400 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none"
+        viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+        </path>
+    </svg>
+    <span class="text-slate-300 font-medium">Crunching market data...</span>
 </div>
 
-<section id="ranking-results-section" class="mt-6 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 {% if not results %}hidden{% endif %}">
+<section id="ranking-results-section"
+    class="mt-6 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5 {% if not results %}hidden{% endif %}">
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 class="text-lg font-semibold text-white">Results</h3>
         <p id="results-summary" class="text-sm text-slate-300">
@@ -71,32 +141,32 @@
         <table class="min-w-full text-sm">
             <thead class="bg-slate-800/80 text-left text-xs uppercase tracking-wider text-slate-300">
                 <tr>
-                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="rank">Rank <span class="sort-indicator"></span></button></th>
-                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="ticker">Ticker <span class="sort-indicator"></span></button></th>
+                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="rank">Rank <span
+                                class="sort-indicator"></span></button></th>
+                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="ticker">Ticker
+                            <span class="sort-indicator"></span></button></th>
                     <th id="metric-column-header" class="px-3 py-3">
                         <button type="button" class="table-sort-btn" data-sort-key="metric">
-                            <span id="metric-column-label">{{ metric_registry[selected.metric].display if metric_registry[selected.metric] else selected.metric }}</span>
+                            <span id="metric-column-label">{{ metric_registry[selected.metric].display if
+                                metric_registry[selected.metric] else selected.metric }}</span>
                             <span class="sort-indicator"></span>
                         </button>
                     </th>
-                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="cagr">CAGR <span class="sort-indicator"></span></button></th>
-                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="volatility">Volatility <span class="sort-indicator"></span></button></th>
-                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="sharpe">Sharpe <span class="sort-indicator"></span></button></th>
+                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="cagr">CAGR <span
+                                class="sort-indicator"></span></button></th>
+                    <th class="px-3 py-3"><button type="button" class="table-sort-btn"
+                            data-sort-key="volatility">Volatility <span class="sort-indicator"></span></button></th>
+                    <th class="px-3 py-3"><button type="button" class="table-sort-btn" data-sort-key="sharpe">Sharpe
+                            <span class="sort-indicator"></span></button></th>
                 </tr>
             </thead>
             <tbody id="ranking-results-body">
                 {% for row in results %}
-                <tr
-                    class="border-t border-slate-700/60 {% if loop.first and selected.order == 'best' %}row-best{% elif loop.first and selected.order == 'worst' %}row-worst{% endif %}"
-                    data-rank="{{ row.rank }}"
-                    data-rank-label="{{ row.rank_label }}"
-                    data-ticker="{{ row.ticker }}"
-                    data-metric-value="{{ row.metric_value }}"
-                    data-display-value="{{ row.display_value }}"
-                    data-cagr="{{ row.cagr or 0 }}"
-                    data-volatility="{{ row.volatility or 0 }}"
-                    data-sharpe="{{ row.sharpe or 0 }}"
-                >
+                <tr class="border-t border-slate-700/60 {% if loop.first and selected.order == 'best' %}row-best{% elif loop.first and selected.order == 'worst' %}row-worst{% endif %}"
+                    data-rank="{{ row.rank }}" data-rank-label="{{ row.rank_label }}" data-ticker="{{ row.ticker }}"
+                    data-metric-value="{{ row.metric_value }}" data-display-value="{{ row.display_value }}"
+                    data-cagr="{{ row.cagr or 0 }}" data-volatility="{{ row.volatility or 0 }}"
+                    data-sharpe="{{ row.sharpe or 0 }}">
                     <td class="px-3 py-3">{{ row.rank_label }}</td>
                     <td class="px-3 py-3 font-semibold text-white">{{ row.ticker }}</td>
                     <td class="px-3 py-3">{{ row.display_value }}</td>
@@ -109,24 +179,16 @@
         </table>
     </div>
 
-    <nav
-        id="ranking-pagination"
-        class="mt-4 flex flex-wrap gap-2"
-        data-exchange="{{ selected.exchange }}"
-        data-metric="{{ selected.metric }}"
-        data-order="{{ selected.order }}"
-        data-limit="{{ selected.limit }}"
-        data-horizon-years="{{ selected.horizon_years }}"
-    >
+    <nav id="ranking-pagination" class="mt-4 flex flex-wrap gap-2" data-exchange="{{ selected.exchange }}"
+        data-metric="{{ selected.metric }}" data-order="{{ selected.order }}" data-limit="{{ selected.limit }}"
+        data-horizon-years="{{ selected.horizon_years }}">
         {% if pagination.total_pages > 1 %}
-            {% for p in range(1, pagination.total_pages + 1) %}
-            <a
-                class="page-link {% if p == pagination.page %}page-link-active{% endif %}"
-                href="/ranking?exchange={{ selected.exchange }}&metric={{ selected.metric }}&order={{ selected.order }}&limit={{ selected.limit }}&horizon_years={{ selected.horizon_years }}&page={{ p }}"
-            >
-                {{ p }}
-            </a>
-            {% endfor %}
+        {% for p in range(1, pagination.total_pages + 1) %}
+        <a class="page-link {% if p == pagination.page %}page-link-active{% endif %}"
+            href="/ranking?exchange={{ selected.exchange }}&metric={{ selected.metric }}&order={{ selected.order }}&limit={{ selected.limit }}&horizon_years={{ selected.horizon_years }}&page={{ p }}">
+            {{ p }}
+        </a>
+        {% endfor %}
         {% endif %}
     </nav>
 </section>
@@ -144,6 +206,48 @@
         <h4 class="chart-title">CAGR Comparison (Bar)</h4>
         <canvas id="cagrBarChart"></canvas>
     </article>
+</section>
+
+<section id="ranking-explanation" class="mt-6 rounded-2xl border border-cyan-500/30 bg-cyan-900/10 p-5 hidden">
+    <div class="flex items-center gap-2 mb-4">
+        <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.346A3.5 3.5 0 0115 17h-4.5a3.5 3.5 0 01-2.474-1.026l-.347-.346z">
+            </path>
+        </svg>
+        <h3 class="text-lg font-semibold text-cyan-100">AI Ranking Insights</h3>
+    </div>
+
+    <div class="space-y-4 text-sm text-slate-300">
+        <div>
+            <h4 class="font-medium text-cyan-300 uppercase tracking-wider text-xs mb-1">Screen Summary</h4>
+            <p id="rank-expl-summary" class="leading-relaxed"></p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="rounded-lg bg-slate-800/50 p-3">
+                <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Methodology</h4>
+                <p id="rank-expl-methodology" class="leading-relaxed"></p>
+            </div>
+            <div class="rounded-lg bg-slate-800/50 p-3">
+                <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Metric Explained</h4>
+                <p id="rank-expl-metric" class="leading-relaxed"></p>
+            </div>
+            <div class="rounded-lg bg-slate-800/50 p-3">
+                <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Top Results</h4>
+                <pre id="rank-expl-top-stocks"
+                    class="whitespace-pre-wrap font-mono text-xs text-slate-300 leading-relaxed"></pre>
+            </div>
+            <div id="rank-expl-weights-container" class="rounded-lg bg-slate-800/50 p-3 hidden">
+                <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Weights Used</h4>
+                <pre id="rank-expl-weights"
+                    class="whitespace-pre-wrap font-mono text-xs text-slate-300 leading-relaxed"></pre>
+            </div>
+        </div>
+        <div class="pt-2 border-t border-cyan-500/20">
+            <h4 class="font-medium text-cyan-300 uppercase tracking-wider text-xs mb-1">Closing Note</h4>
+            <p id="rank-expl-final" class="leading-relaxed text-cyan-50 font-medium"></p>
+        </div>
+    </div>
 </section>
 
 <script id="ranking-chart-data" type="application/json">{{ chart_data_json|safe }}</script>

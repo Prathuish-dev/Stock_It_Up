@@ -19,6 +19,28 @@
     const sumLoss = document.getElementById("sum-loss");
 
     const charts = { pie: null, capital: null, scatter: null };
+
+    // --- Custom Weights toggle -------------------------------------------
+    const weightsToggle = document.getElementById("portfolio-weights-toggle");
+    const weightsSection = document.getElementById("portfolio-weights-section");
+    const weightsChevron = document.getElementById("portfolio-weights-chevron");
+    if (weightsToggle && weightsSection) {
+        weightsToggle.addEventListener("click", () => {
+            const isHidden = weightsSection.classList.toggle("hidden");
+            if (weightsChevron) {
+                // Swap between + (closed) and × (open) icons
+                const path = weightsChevron.querySelector("path");
+                if (path) {
+                    path.setAttribute("d", isHidden
+                        ? "M12 6V12M12 12V18M12 12H6M12 12H18"   // + icon
+                        : "M6 18L18 6M6 6l12 12"                 // × icon
+                    );
+                }
+            }
+        });
+    }
+    // ---------------------------------------------------------------------
+
     const tickerPicker =
         typeof window.createTickerPicker === "function"
             ? window.createTickerPicker({
@@ -170,6 +192,17 @@
 
         try {
             const data = new FormData(form);
+
+            // Collect custom weights if the panel is visible
+            const weightsPayload = {};
+            if (weightsSection && !weightsSection.classList.contains("hidden")) {
+                for (const [key, val] of data.entries()) {
+                    if (key.startsWith("weight_") && val.trim() !== "") {
+                        weightsPayload[key] = parseFloat(val) || 0;
+                    }
+                }
+            }
+
             const payload = {
                 exchange: String(data.get("exchange") || "NSE"),
                 tickers: tickerPicker
@@ -179,6 +212,7 @@
                 method: String(data.get("method") || "proportional"),
                 risk_profile: String(data.get("risk_profile") || "MEDIUM"),
                 horizon_years: Number(data.get("horizon_years") || 3),
+                ...weightsPayload,
             };
 
             const res = await fetch("/api/portfolio", {

@@ -6,14 +6,16 @@
 {% block content %}
 <section class="rounded-2xl border border-slate-700/60 bg-slate-900/70 p-5">
     <h3 class="text-lg font-semibold text-white">Portfolio Optimizer</h3>
-    <p class="mt-1 text-sm text-slate-300">Analyze allocations, risk, and expected outcomes using your selected stocks.</p>
+    <p class="mt-1 text-sm text-slate-300">Analyze allocations, risk, and expected outcomes using your selected stocks.
+    </p>
 
     <form id="portfolio-form" class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <label class="field">
             <span>Market</span>
             <select id="portfolio-exchange" name="exchange" required>
                 {% for market in market_options %}
-                <option value="{{ market }}" {% if portfolio_defaults.exchange == market %}selected{% endif %}>{{ market }}</option>
+                <option value="{{ market }}" {% if portfolio_defaults.exchange==market %}selected{% endif %}>{{ market
+                    }}</option>
                 {% endfor %}
             </select>
         </label>
@@ -23,13 +25,15 @@
         </label>
         <label class="field">
             <span>Horizon (Years)</span>
-            <input type="number" name="horizon_years" min="1" max="10" value="{{ portfolio_defaults.horizon_years }}" required>
+            <input type="number" name="horizon_years" min="1" max="10" value="{{ portfolio_defaults.horizon_years }}"
+                required>
         </label>
         <label class="field">
             <span>Method</span>
             <select name="method" required>
                 {% for method in portfolio_methods %}
-                <option value="{{ method }}" {% if portfolio_defaults.method == method %}selected{% endif %}>{{ method }}</option>
+                <option value="{{ method }}" {% if portfolio_defaults.method==method %}selected{% endif %}>{{ method }}
+                </option>
                 {% endfor %}
             </select>
         </label>
@@ -37,7 +41,8 @@
             <span>Risk Profile</span>
             <select name="risk_profile" required>
                 {% for rp in portfolio_risks %}
-                <option value="{{ rp }}" {% if portfolio_defaults.risk_profile == rp %}selected{% endif %}>{{ rp }}</option>
+                <option value="{{ rp }}" {% if portfolio_defaults.risk_profile==rp %}selected{% endif %}>{{ rp }}
+                </option>
                 {% endfor %}
             </select>
         </label>
@@ -46,10 +51,59 @@
             <input type="hidden" name="tickers" id="portfolio-tickers-hidden" value="{{ portfolio_defaults.tickers }}">
             <div class="ticker-picker">
                 <div id="portfolio-ticker-selected" class="ticker-selected"></div>
-                <input id="portfolio-ticker-search" type="text" placeholder="Search and press Enter (e.g. TCS, INFY)" autocomplete="off">
+                <input id="portfolio-ticker-search" type="text" placeholder="Search and press Enter (e.g. TCS, INFY)"
+                    autocomplete="off">
                 <div id="portfolio-ticker-suggestions" class="ticker-suggestions hidden"></div>
             </div>
         </label>
+        <!-- Custom Weights Toggle -->
+        <div class="md:col-span-2 xl:col-span-3">
+            <button type="button" id="portfolio-weights-toggle"
+                class="inline-flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-300 hover:border-cyan-500/60 hover:text-cyan-300 transition-all duration-200">
+                <svg id="portfolio-weights-chevron" class="w-4 h-4 transition-transform duration-200" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 6V12M12 12V18M12 12H6M12 12H18"></path>
+                </svg>
+                Custom Scoring Weights
+            </button>
+        </div>
+
+        <div id="portfolio-weights-section"
+            class="md:col-span-2 xl:col-span-3 hidden rounded-xl border border-slate-700/60 bg-slate-800/50 p-4">
+            <div class="mb-3 flex items-center justify-between">
+                <h4 class="text-sm font-semibold text-slate-200">Custom Weights</h4>
+                <p class="text-xs text-slate-400">Controls how stocks are scored before capital is allocated. Values are
+                    relative and auto-normalize to 100%.</p>
+            </div>
+            <div class="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+                <label class="field">
+                    <span class="text-xs text-slate-300">Return (CAGR)</span>
+                    <input type="number" name="weight_return" min="0" max="10" step="0.01" value="0.34">
+                </label>
+                <label class="field">
+                    <span class="text-xs text-slate-300">Risk (Volatility)</span>
+                    <input type="number" name="weight_risk" min="0" max="10" step="0.01" value="0.33">
+                </label>
+                <label class="field">
+                    <span class="text-xs text-slate-300">Volume</span>
+                    <input type="number" name="weight_volume" min="0" max="10" step="0.01" value="0.33">
+                </label>
+                <label class="field">
+                    <span class="text-xs text-slate-300">Sharpe</span>
+                    <input type="number" name="weight_sharpe" min="0" max="10" step="0.01" value="0.0">
+                </label>
+                <label class="field">
+                    <span class="text-xs text-slate-300">Max Drawdown</span>
+                    <input type="number" name="weight_max_drawdown" min="0" max="10" step="0.01" value="0.0">
+                </label>
+                <label class="field">
+                    <span class="text-xs text-slate-300">Sortino</span>
+                    <input type="number" name="weight_sortino" min="0" max="10" step="0.01" value="0.0">
+                </label>
+            </div>
+        </div>
+
         <div class="md:col-span-2 xl:col-span-3">
             <button id="portfolio-run-btn" type="submit" class="btn-primary">
                 <span class="btn-label">Analyze Portfolio</span>
@@ -63,18 +117,32 @@
 <div id="portfolio-warning" class="alert alert-warning mt-4 hidden"></div>
 
 <section id="portfolio-summary" class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4 hidden">
-    <article class="metric-card"><p class="metric-label">Portfolio Return</p><p id="sum-return" class="metric-value">0%</p></article>
-    <article class="metric-card"><p class="metric-label">Portfolio Volatility</p><p id="sum-vol" class="metric-value">0%</p></article>
-    <article class="metric-card"><p class="metric-label">Portfolio Sharpe</p><p id="sum-sharpe" class="metric-value">0.00</p></article>
-    <article class="metric-card"><p class="metric-label">Loss Probability</p><p id="sum-loss" class="metric-value">0%</p></article>
+    <article class="metric-card">
+        <p class="metric-label">Portfolio Return</p>
+        <p id="sum-return" class="metric-value">0%</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Portfolio Volatility</p>
+        <p id="sum-vol" class="metric-value">0%</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Portfolio Sharpe</p>
+        <p id="sum-sharpe" class="metric-value">0.00</p>
+    </article>
+    <article class="metric-card">
+        <p class="metric-label">Loss Probability</p>
+        <p id="sum-loss" class="metric-value">0%</p>
+    </article>
 </section>
 
 <section id="portfolio-explanation" class="mt-6 rounded-2xl border border-indigo-500/30 bg-indigo-900/10 p-5 hidden">
     <div class="flex items-center gap-2 mb-4">
-        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+        </svg>
         <h3 class="text-lg font-semibold text-indigo-100">AI Interpretation</h3>
     </div>
-    
+
     <div class="space-y-4 text-sm text-slate-300">
         <div>
             <h4 class="font-medium text-indigo-300 uppercase tracking-wider text-xs mb-1">Executive Summary</h4>
@@ -91,7 +159,8 @@
             </div>
             <div class="rounded-lg bg-slate-800/50 p-3 md:col-span-2">
                 <h4 class="font-medium text-slate-400 uppercase tracking-wider text-xs mb-1">Portfolio Risk</h4>
-                <pre id="expl-portfolio-risk" class="whitespace-pre-wrap font-mono text-xs text-slate-300 leading-relaxed"></pre>
+                <pre id="expl-portfolio-risk"
+                    class="whitespace-pre-wrap font-mono text-xs text-slate-300 leading-relaxed"></pre>
             </div>
         </div>
         <div class="pt-2 border-t border-indigo-500/20">

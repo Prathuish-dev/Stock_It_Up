@@ -18,6 +18,7 @@
     const resultsBody = document.getElementById("ranking-results-body");
     const pagination = document.getElementById("ranking-pagination");
     const sortButtons = Array.from(document.querySelectorAll(".table-sort-btn"));
+    const explanationSection = document.getElementById("ranking-explanation");
 
     let currentRows = [];
     let currentOrder = "best";
@@ -233,6 +234,34 @@
         if (resultsSection) resultsSection.classList.remove("hidden");
         if (chartsSection) chartsSection.classList.remove("hidden");
 
+        // Populate explanation panel
+        const expl = payload.explanation;
+        if (explanationSection && expl) {
+            const setText = (id, txt) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = txt || "";
+            };
+            setText("rank-expl-summary", expl.summary);
+            setText("rank-expl-methodology", expl.methodology);
+            setText("rank-expl-metric", expl.metric_insight);
+            setText("rank-expl-top-stocks", expl.top_stocks);
+            setText("rank-expl-final", expl.final_statement);
+
+            // Weights section — only show for score/custom metric
+            const weightsContainer = document.getElementById("rank-expl-weights-container");
+            const weightsEl = document.getElementById("rank-expl-weights");
+            if (expl.weights_used && expl.weights_used.trim()) {
+                if (weightsEl) weightsEl.textContent = expl.weights_used;
+                if (weightsContainer) weightsContainer.classList.remove("hidden");
+            } else {
+                if (weightsContainer) weightsContainer.classList.add("hidden");
+            }
+
+            explanationSection.classList.remove("hidden");
+        } else if (explanationSection) {
+            explanationSection.classList.add("hidden");
+        }
+
         if (window.StockCharts && typeof window.StockCharts.renderRankingCharts === "function") {
             window.StockCharts.renderRankingCharts(payload.chart_data || {});
         }
@@ -254,14 +283,32 @@
 
             if (pushHistory && payload && payload.ok) {
                 const selected = payload.selected || {};
-                const query = new URLSearchParams({
+                const queryParams = {
                     exchange: selected.exchange || "NSE",
                     metric: selected.metric || "cagr",
                     order: selected.order || "best",
                     limit: String(selected.limit || 10),
                     horizon_years: String(selected.horizon_years || 3),
                     page: String((payload.pagination && payload.pagination.page) || 1),
-                });
+                };
+
+                // Add any weight parameters used
+                if (payload.results && payload.results.length > 0 && payload.results[0].weights_used) {
+                    const weightsUsed = payload.results[0].weights_used;
+                    for (const [key, val] of Object.entries(weightsUsed)) {
+                        queryParams[`weight_${key}`] = val;
+                    }
+                } else {
+                    // Fallback to currently selected weights in the form if metrics are score
+                    const formWeights = new FormData(form);
+                    for (const [key, val] of formWeights.entries()) {
+                        if (key.startsWith("weight_") && val.trim() !== "") {
+                            queryParams[key] = val;
+                        }
+                    }
+                }
+
+                const query = new URLSearchParams(queryParams);
                 window.history.replaceState({}, "", `/ranking?${query.toString()}`);
             }
         } catch (error) {
@@ -273,6 +320,23 @@
 
     form.addEventListener("submit", (event) => {
         event.preventDefault();
+
+        // Dynamic N Limits based on Exchange
+        const limitInput = form.querySelector('input[name="limit"]');
+        const exchangeSelect = form.querySelector('select[name="exchange"]');
+        if (limitInput && exchangeSelect) {
+            const limitVal = parseInt(limitInput.value, 10);
+            const exchangeVal = exchangeSelect.value;
+            if (exchangeVal === 'NSE' && limitVal > 1970) {
+                showBox(errorBox, 'For NSE, N cannot be greater than 1970.');
+                return;
+            }
+            if (exchangeVal === 'BSE' && limitVal > 4465) {
+                showBox(errorBox, 'For BSE, N cannot be greater than 4465.');
+                return;
+            }
+        }
+
         const params = new URLSearchParams(new FormData(form));
         params.set("page", "1");
         fetchRanking(params, true);
@@ -286,14 +350,34 @@
             event.preventDefault();
 
             const page = target.dataset.page || "1";
-            const params = new URLSearchParams({
+            const paramsObj = {
                 exchange: pagination.dataset.exchange || "NSE",
                 metric: pagination.dataset.metric || "cagr",
                 order: pagination.dataset.order || "best",
                 limit: pagination.dataset.limit || "10",
                 horizon_years: pagination.dataset.horizonYears || "3",
                 page,
-            });
+            };
+
+            // Extract custom weights from current URL to preserve them across pagination
+            const currentUrlParams = new URLSearchParams(window.location.search);
+            for (const [key, value] of currentUrlParams.entries()) {
+                if (key.startsWith("weight_")) {
+                    paramsObj[key] = value;
+                }
+            }
+
+            // If weights are not in URL, check form fields as fallback
+            if (paramsObj.metric === "score") {
+                const formWeights = new FormData(form);
+                for (const [key, val] of formWeights.entries()) {
+                    if (key.startsWith("weight_") && val.trim() !== "" && !paramsObj[key]) {
+                        paramsObj[key] = val;
+                    }
+                }
+            }
+
+            const params = new URLSearchParams(paramsObj);
             fetchRanking(params, true);
         });
     }
@@ -324,5 +408,23 @@
             params.set("page", "1");
         }
         fetchRanking(params, false);
+    }
+
+    // Wire up limit max attribute logic
+    const limitInput = form.querySelector('input[name="limit"]');
+    const exchangeSelect = form.querySelector('select[name="exchange"]');
+    if (limitInput && exchangeSelect) {
+        function updateLimitMax() {
+            const exchangeVal = exchangeSelect.value;
+            if (exchangeVal === 'NSE') {
+                limitInput.max = "1970";
+                limitInput.placeholder = "Max 1970";
+            } else if (exchangeVal === 'BSE') {
+                limitInput.max = "4465";
+                limitInput.placeholder = "Max 4465";
+            }
+        }
+        exchangeSelect.addEventListener('change', updateLimitMax);
+        updateLimitMax(); // Initialize
     }
 })();

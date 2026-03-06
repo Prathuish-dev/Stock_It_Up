@@ -32,6 +32,15 @@ def _json_body(request):
 @require_GET
 def api_ranking(request):
     try:
+        weights = {}
+        for key, value in request.GET.items():
+            if key.startswith("weight_"):
+                metric_key = key[7:]  # Strip 'weight_' prefix
+                try:
+                    weights[metric_key] = float(value)
+                except ValueError:
+                    pass  # Ignore invalid float values silently
+                    
         payload = ranking_service.build_payload(
             exchange=request.GET.get("exchange", "NSE"),
             metric=request.GET.get("metric", "cagr"),
@@ -39,6 +48,7 @@ def api_ranking(request):
             limit=request.GET.get("limit", 10),
             page=request.GET.get("page", 1),
             horizon_years=request.GET.get("horizon_years", DEFAULT_HORIZON_YEARS),
+            weights=weights if weights else None,
         )
         return JsonResponse(payload.model_dump(), status=200)
     except Exception as exc:
@@ -49,6 +59,15 @@ def api_ranking(request):
 @require_http_methods(["POST"])
 def api_portfolio(request):
     body = _json_body(request)
+    # Extract any weight_* keys from the request body
+    weights: dict[str, float] = {}
+    for key, value in body.items():
+        if key.startswith("weight_"):
+            metric_key = key[7:]
+            try:
+                weights[metric_key] = float(value)
+            except (TypeError, ValueError):
+                pass
     try:
         payload = portfolio_service.build_payload(
             exchange=body.get("exchange", "NSE"),
@@ -58,6 +77,7 @@ def api_portfolio(request):
             risk_profile=body.get("risk_profile", "MEDIUM"),
             horizon_years=body.get("horizon_years", 3),
             include_explanation=body.get("include_explanation", True),
+            weights=weights if weights else None,
         )
         return JsonResponse(payload.model_dump(), status=200)
     except Exception as exc:

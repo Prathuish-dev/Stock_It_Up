@@ -103,6 +103,7 @@ class PortfolioService:
         risk_profile: str,
         horizon_years: int,
         include_explanation: bool = True,
+        weights: dict[str, float] | None = None,
     ) -> PortfolioResponse:
         started = time.perf_counter()
         exchange = exchange.upper()
@@ -155,7 +156,8 @@ class PortfolioService:
                 detail="Not enough valid tickers with data for the selected horizon.",
             )
 
-        scored = ScoringEngine.compute_weighted_scores(metrics_dict, DEFAULT_SCREENER_WEIGHTS)
+        scoring_weights = weights if weights else DEFAULT_SCREENER_WEIGHTS
+        scored = ScoringEngine.compute_weighted_scores(metrics_dict, scoring_weights)
 
         scored_minimal: list[dict] = []
         for row in scored:

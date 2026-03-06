@@ -203,5 +203,60 @@ Key testing philosophy:
 - `MetricCache` is always patched in ConversationManager tests
 - Mathematical invariants (`Σ wᵢ = 1.0`, `CVaR ≤ VaR`) are explicitly asserted with tight tolerances
 - Parser stress tests verify resilience to uppercase, filler words, and edge spacing
+- API tests verify correct weight parsing from query strings and POST bodies
+
+| test file | coverage |
+|---|---|
+| `test_scoring_engine.py` | Weighted scoring, Sharpe weight impact, zero-weight guard, normalisation invariants |
+| `test_django_api.py` | `api_ranking` weight parsing (`weight_*` query params → dict) |
+
+---
+
+### Phase 11 — Weighted Metrics, Ranking Explanations & Portfolio Weights
+
+#### 11.1 — Custom Weighted Ranking
+
+Users asked to combine multiple metrics rather than choosing just one. The ScoringEngine already existed for the analysis session but was not exposed through the Ranking API.
+
+The solution was threefold:
+
+1. **Schema extension**: Added `weights: dict[str, float] | None` to `RankingSelection` so the Pydantic contract holds the user's intent.
+2. **API parsing**: Weights arrive as URL query params prefixed with `weight_` (e.g. `weight_return=0.7`). `views.py` loops over `request.GET` items and builds the dict. Invalid float values are silently skipped.
+3. **ScoringEngine reuse**: `ScreenerEngine` already called `ScoringEngine.compute_weighted_scores()` for the `"score"` metric. Passing the user-provided weights dict there was a one-line change — normalisation, risk-profile adjustment, and min-max logic all worked without modification.
+
+The "Score" metric was renamed to **"Custom"** in `constants.METRIC_REGISTRY` to communicate that weights are user-defined. No backend logic changed — only the display string.
+
+Input validation edge case: HTML `<input type="number" step="0.1">` rejects `0.34` because it is not a multiple of 0.1. Changing to `step="0.01"` permits two decimal places without any backend changes.
+
+#### 11.2 — RankingExplanationEngine
+
+After ranking results were returned, there was no interpretive text explaining *why* those stocks appear at the top. The `AllocationExplanationEngine` pattern was replicated exactly:
+
+- Fully stateless (`@staticmethod` only)
+- Does not compute metrics — only interprets existing results
+- Produces six sections: `summary`, `methodology`, `top_stocks`, `metric_insight`, `weights_used`, `final_statement`
+- `weights_used` section is only populated when metric is `"score"` (Custom)
+
+The engine is called inside `RankingService.build_payload()` wrapped in a `try/except`. If it fails, `explanation=None` is returned gracefully — same fail-safe pattern as portfolio.
+
+The UI panel uses a cyan color theme to visually distinguish it from the Portfolio (indigo) and Risk (rose) panels.
+
+#### 11.3 — Custom Scoring Weights for Portfolio
+
+The portfolio page used `DEFAULT_SCREENER_WEIGHTS` hardcoded in `PortfolioService`. The request was to expose the same six weight sliders on the portfolio page.
+
+Key design choice: **weights only affect step 1 (scoring order)**, not the allocation method. The allocation (proportional/softmax/risk-adjusted) still operates on the *output* of the scoring step. Users control which stocks score highly; the method then distributes capital across those scores.
+
+The frontend only sends weights when the Custom Weights panel is **open**. When closed, no `weight_*` keys appear in the POST body and the service falls back to defaults — no boolean flag needed.
+
+#### 11.4 — UX Polish
+
+Three smaller improvements shipped together:
+
+| Change | Detail |
+|---|---|
+| N parameter hard caps | NSE ≤ 1,970 · BSE ≤ 4,465. The `max` attribute on the N input updates dynamically when exchange changes. A validation error blocks submission if exceeded. |
+| Loading animation | Replaced plain text with an SVG ring animation labeled "Crunching market data..." |
+| Toggle button styling | Custom Weights toggle upgraded from a text link to a bordered secondary button with `+` / `×` icon swap on open/close. |
 
 ---

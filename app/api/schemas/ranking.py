@@ -3,6 +3,15 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class RankingExplanation(BaseModel):
+    summary: str
+    methodology: str
+    top_stocks: str
+    metric_insight: str
+    weights_used: str = ""
+    final_statement: str
+
+
 class RankingItem(BaseModel):
     rank: int
     rank_label: str
@@ -12,6 +21,7 @@ class RankingItem(BaseModel):
     cagr: float
     volatility: float
     sharpe: float
+    weights_used: dict[str, float] | None = None
 
 
 class RankingSelection(BaseModel):
@@ -20,6 +30,7 @@ class RankingSelection(BaseModel):
     order: str
     limit: int
     horizon_years: int
+    weights: dict[str, float] | None = None
 
 
 class RankingPagination(BaseModel):
@@ -59,6 +70,7 @@ class RankingResponse(BaseModel):
     results: list[RankingItem] = Field(default_factory=list)
     pagination: RankingPagination
     chart_data: RankingChartData
+    explanation: RankingExplanation | None = None
     execution_ms: float
     cache_hit: bool
 

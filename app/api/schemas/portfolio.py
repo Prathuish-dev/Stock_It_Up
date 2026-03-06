@@ -11,6 +11,7 @@ class PortfolioRequest(BaseModel):
     risk_profile: str = "MEDIUM"
     horizon_years: int = 3
     include_explanation: bool = True
+    weights: dict[str, float] | None = None
 
 
 class ExplanationSchema(BaseModel):
