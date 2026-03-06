@@ -368,28 +368,66 @@ refresh cache BSE
 
 ## 1️⃣3️⃣ How to Run
 
-### Clone & setup
+### Step 1 — Clone & install
+
 ```bash
 git clone <repo-url>
 cd Stock_It_Up/Stock_It_Up
-python -m venv venv
-venv\Scripts\activate        # Windows
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # macOS / Linux
 pip install -r requirements.txt
 ```
 
-### Run the CLI
+### Step 2 — Set up the dataset
+
+The full stock dataset (~150k CSVs) is not in the repo due to size.  
+A **sample dataset** (5 NSE + 5 BSE well-known tickers) is included in `sample_data/` so you can run the app immediately.
+
+```powershell
+# Windows PowerShell
+Copy-Item sample_data comp_stock_data -Recurse
+```
+
+```bash
+# macOS / Linux
+cp -r sample_data comp_stock_data
+```
+
+> With sample data, ranking queries return up to 5 NSE results — all features (scoring, portfolio, explanation, charts) work normally.  
+> See `sample_data/README_SAMPLE.md` for full details.
+
+### Step 3 — Run the web app
+
+```bash
+python manage.py runserver
+```
+
+Open **http://127.0.0.1:8000** in your browser.
+
+Available pages:
+- `/` — Ranking page (try: metric = Custom, exchange = NSE)
+- `/portfolio` — Portfolio Optimizer
+- `/risk` — Risk Analytics
+- `/chat` — CLI-style chatbot
+
+### Step 4 — Run the CLI *(optional)*
+
 ```bash
 python main.py
 ```
 
-### Run Tests
+### Step 5 — Run Tests
+
 ```bash
-pytest                       # 110+ tests, ~1.5 seconds
-pytest tests/test_screener.py -v           # screener + positional + sort tests
-pytest tests/test_scoring_engine.py -v    # weighted scoring + weight normalisation
-pytest tests/test_django_api.py -v        # API endpoint + weight parsing tests
-pytest tests/test_metric_cache.py -v      # cache tests only
+pytest                                        # all tests (~110, ~1.5s)
+pytest tests/test_screener.py -v              # screener + positional + sort
+pytest tests/test_scoring_engine.py -v       # weighted scoring + normalisation
+pytest tests/test_django_api.py -v           # API endpoint + weight parsing
+pytest tests/test_metric_cache.py -v         # cache lifecycle
 ```
+
+> Tests have **no dependency on the dataset** — all disk I/O is mocked.
 
 ---
 

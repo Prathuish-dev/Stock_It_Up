@@ -2,7 +2,14 @@ __pycache__/
 *.pyc
 .env
 venv/
+.venv/
 .idea/
 .vscode/
 coverage/
 .pytest_cache/
+
+# Stock dataset — too large for GitHub (~150k CSVs)
+comp_stock_data/
+
+# Local Django database
+*.sqlite3
